@@ -118,7 +118,14 @@ def main():
                             break
                         card_el = card_el.parent
                     try:
-                        clean_name = parser._extract_build_name(card_el or a)
+                        # Avoid using private parser._extract_build_name; use public fields / DOM text instead
+                        if card_el is not None:
+                            clean_name = card_el.get_text(separator=" ", strip=True)
+                        else:
+                            clean_name = a.get_text(separator=" ", strip=True)
+                        # fallback to public BuildSummary.name if extracted text is empty
+                        if not clean_name:
+                            clean_name = b.name
                     except Exception:
                         clean_name = b.name
                 if not clean_name:

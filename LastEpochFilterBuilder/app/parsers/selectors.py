@@ -24,7 +24,7 @@ SELECTORS = {
     "build_page": {
         "page_title": ["h1", "title", "meta[property='og:title']"],
         "build_name": ["h1.entry-title", "h1", ".post-title", "meta[property='og:title']"],
-        "class_name": [".class-name", ".build-class", "meta[itemprop='author']"],
+        "class_name": [".class-name", ".build-class"],
         "mastery": [".mastery", ".build-mastery", ".sub-title"],
         "author": [".author", ".byline", "meta[name='author']"],
         "main_content": ["main", "article", "#content"],
