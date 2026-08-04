@@ -102,7 +102,20 @@ class TierListParser(BaseParser):
                     sections.extend(found)
             except Exception:
                 pass
-        return sections
+        # Filter out nested containers: keep only top-level containers
+        unique_sections = []
+        for sec in sections:
+            # check if any ancestor of sec is already in sections (or unique_sections)
+            skip = False
+            for anc in sec.parents:
+                if anc in sections:
+                    skip = True
+                    break
+            if not skip:
+                unique_sections.append(sec)
+
+        # If dedup produced nothing, fall back to original list
+        return unique_sections or sections
 
     def _find_label_elements(self, base):
         selectors = SELECTORS.get("tier_list", {})
@@ -122,7 +135,15 @@ class TierListParser(BaseParser):
             for h in base.find_all(["h2", "h3", "h4"]):
                 if h and h.get_text(strip=True):
                     label_els.append(h)
-        return label_els
+        # Filter label elements to those that look like actual tier labels (S/A/B/C/D)
+        filtered = []
+        for el in label_els:
+            txt = el.get_text(strip=True)
+            norm = self._normalize_tier(txt)
+            if norm and (len(norm) == 1 and norm in {"S", "A", "B", "C", "D"} or norm == "S"):
+                filtered.append(el)
+
+        return filtered
 
     def _extract_build_cards_for_label(self, label_el, base):
         """Find build card elements that belong to the section identified by label_el.
