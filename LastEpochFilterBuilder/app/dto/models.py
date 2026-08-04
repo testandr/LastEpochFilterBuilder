@@ -69,10 +69,12 @@ class BuildDetails:
     name: str
     class_name: Optional[str] = None
     mastery: Optional[str] = None
+    author: Optional[str] = None
     items: List[ItemDTO] = field(default_factory=list)
     idols: List[IdolDTO] = field(default_factory=list)
     skills: List[SkillDTO] = field(default_factory=list)
     stats: List[BuildStatDTO] = field(default_factory=list)
+    source_url: Optional[str] = None
 
 
 @dataclass
