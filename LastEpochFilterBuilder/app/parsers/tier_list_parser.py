@@ -260,9 +260,18 @@ class TierListParser(BaseParser):
                     href = a.get("href")
 
         # if name still missing, skip
-        if not name:
+        if not name or not name.strip():
             logger.warning("Build card skipped: missing name in source %s", source_url)
             return None
+
+        # Final cleaning pass to remove UI artifacts that may remain
+        try:
+            import re
+            name = re.sub(r"(?i)\bgo\s*to\s*build\b", "", name)
+            name = name.replace("*", "").replace("Ч", "")
+            name = " ".join(name.split())
+        except Exception:
+            pass
 
         # if href not found earlier, try selectors for link
         if not href:
@@ -350,6 +359,93 @@ class TierListParser(BaseParser):
         if low == "s":
             return "S"
         return low.upper()
+
+    def _extract_build_name(self, card) -> Optional[str]:
+        """Extract a clean build name from a build card element.
+
+        Strategy:
+        1. Prefer anchor text for links to /last-epoch/build-guides/, excluding CTA/badge children.
+        2. If no such anchor, look for heading tags inside the card.
+        3. If still nothing, use title/aria-label attributes if they seem clean.
+        4. Fallback: clean card.get_text() by removing known UI fragments.
+        """
+        from bs4 import NavigableString
+
+        selectors = SELECTORS.get("tier_list", {})
+
+        # 1) find preferred anchor
+        a = None
+        try:
+            a = card.select_one("a[href*='/last-epoch/build-guides/']")
+        except Exception:
+            a = None
+        if not a:
+            a = card.find("a", href=True)
+
+        def clean_text_nodes(tag):
+            parts = []
+            for desc in tag.descendants:
+                if isinstance(desc, NavigableString):
+                    txt = desc.strip()
+                    if not txt:
+                        continue
+                    # skip CTA/button texts and decorative elements via ancestor class heuristics
+                    skip = False
+                    for anc in desc.parents:
+                        if anc is tag:
+                            break
+                        cls = anc.get("class") or []
+                        for c in cls:
+                            c_l = c.lower()
+                            if "cta" in c_l or "badge" in c_l or "icon" in c_l or "extra" in c_l:
+                                skip = True
+                                break
+                        if skip:
+                            break
+                    if skip:
+                        continue
+                    if "go to build" in txt.lower():
+                        continue
+                    parts.append(txt)
+            return " ".join(parts).strip()
+
+        if a:
+            name = clean_text_nodes(a)
+            if name:
+                # post-clean: remove stray symbols like trailing '*' or 'Ч'
+                import re
+                name = re.sub(r"(?i)\bgo\s*to\s*build\b", "", name)
+                name = name.replace("*", "").replace("Ч", "")
+                name = " ".join(name.split())
+                return name
+
+        # 2) heading inside card
+        for htag in ("h1", "h2", "h3", "h4", "strong"):
+            h = card.find(htag)
+            if h and h.get_text(strip=True):
+                txt = h.get_text(strip=True)
+                txt = txt.replace("*", "").replace("Ч", "")
+                txt = txt.replace("Go To Build", "")
+                return " ".join(txt.split())
+
+        # 3) attributes
+        for attr in ("title", "aria-label"):
+            val = card.get(attr)
+            if val and "go to build" not in val.lower():
+                txt = val.replace("*", "").replace("Ч", "")
+                return " ".join(txt.split())
+
+        # 4) fallback: clean entire card text
+        txt = card.get_text(separator=" ", strip=True)
+        # remove UI fragments
+        import re
+        txt = re.sub(r"(?i)\bgo\s*to\s*build\b", "", txt)
+        txt = txt.replace("*", "").replace("Ч", "")
+        txt = " ".join(txt.split())
+        # heuristic: if result is too long or empty, return None
+        if not txt:
+            return None
+        return txt
 
 
 def merge_build_summaries(builds: List[BuildSummary]) -> List[BuildSummary]:

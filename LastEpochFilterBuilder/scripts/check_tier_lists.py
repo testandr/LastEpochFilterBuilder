@@ -92,14 +92,49 @@ def main():
             # run parser
             builds = parser.parse_html(html, url, name)
 
+            # For printing, attempt to extract cleaned names from HTML directly to avoid UI noise
+            soup = BeautifulSoup(html, "lxml")
+            clean_print = []
+            for b in builds:
+                # try to find anchor matching the build url by slug (to handle relative hrefs)
+                slug = b.url.rstrip("/").split("/")[-1]
+                a = None
+                try:
+                    for cand in soup.find_all("a", href=True):
+                        if slug in cand.get("href"):
+                            a = cand
+                            break
+                except Exception:
+                    a = None
+                clean_name = None
+                if a:
+                    # determine card element containing this anchor
+                    card_el = a
+                    for _ in range(4):
+                        if card_el is None:
+                            break
+                        cls = " ".join(card_el.get("class") or [])
+                        if "card" in cls.lower() or "tier" in cls.lower():
+                            break
+                        card_el = card_el.parent
+                    try:
+                        clean_name = parser._extract_build_name(card_el or a)
+                    except Exception:
+                        clean_name = b.name
+                if not clean_name:
+                    # fallback: clean via simple regex
+                    import re
+                    clean_name = re.sub(r"(?i)\\bgo\\s*to\\s*build\\b", "", b.name or "").replace("*", "").replace("Ч", "").strip()
+                clean_print.append((clean_name, b.url))
+
             print(f"URL: {url}")
             print(f"HTTP status: {status}")
             print(f"HTML size: {summary['length']} chars")
             print(f"<title>: {summary['title']}")
             print(f"Contains 'S Tier' text: {summary['has_s_tier']}")
             print(f"BuildSummary found: {len(builds)}")
-            for b in builds[:10]:
-                print(f" - {b.name} -> {b.url}")
+            for name_clean, url_clean in clean_print[:10]:
+                print(f" - {name_clean} -> {url_clean}")
 
             results.append({"name": name, "url": url, "status": status, "count": len(builds)})
 
