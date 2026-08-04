@@ -1,0 +1,23 @@
+maxroll:
+  urls:
+	- https://maxroll.gg/last-epoch/tierlists/corruption-tier-list
+	- https://maxroll.gg/last-epoch/tierlists/speed-farming-tier-list
+	- https://maxroll.gg/last-epoch/tierlists/bossing-tier-list
+  request_delay: 1
+  timeout: 20
+
+cache:
+  enabled: true
+  path: data/cache
+  ttl_seconds: 86400
+
+database:
+  type: sqlite
+  path: data/database.sqlite
+
+logging:
+  level: INFO
+  file: null
+
+filter:
+  max_rules: 140

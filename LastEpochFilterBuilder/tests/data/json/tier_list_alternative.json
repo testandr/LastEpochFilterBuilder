@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Alternative Build One",
+    "tier": "S",
+    "class_name": null,
+    "mastery": null,
+    "url": "https://maxroll.gg/last-epoch/build-guides/alt-build-1",
+    "sources": ["speed_farming"],
+    "author": "Bob",
+    "popularity_score": null
+  },
+  {
+    "name": "Alternative Build Two",
+    "tier": "S",
+    "class_name": null,
+    "mastery": null,
+    "url": "https://maxroll.gg/last-epoch/build-guides/alt-build-2",
+    "sources": ["speed_farming"],
+    "author": null,
+    "popularity_score": null
+  }
+]

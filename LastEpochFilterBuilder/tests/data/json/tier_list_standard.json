@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Frost Claw Runemaster",
+    "tier": "S",
+    "class_name": "Mage",
+    "mastery": "Runemaster",
+    "url": "https://maxroll.gg/last-epoch/build-guides/frost-claw-runemaster",
+    "sources": ["corruption"],
+    "author": "By Alice",
+    "popularity_score": 123
+  },
+  {
+    "name": "Julra's Obsession",
+    "tier": "S",
+    "class_name": "Rogue",
+    "mastery": "Falconer",
+    "url": "https://maxroll.gg/last-epoch/build-guides/julras-obsession",
+    "sources": ["corruption"],
+    "author": null,
+    "popularity_score": null
+  }
+]
