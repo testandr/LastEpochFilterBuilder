@@ -88,3 +88,17 @@ class FilterRuleDTO:
     color: Optional[str] = None
     enabled: bool = True
     id: Optional[int] = None
+
+
+@dataclass
+class EquipmentSlot:
+    slot_name: Optional[str]
+    html_fragment: str
+    html_attributes: Dict[str, Any]
+    position: Optional[int] = None
+
+
+@dataclass
+class EquipmentLayout:
+    container_selector: Optional[str]
+    slots: List[EquipmentSlot] = field(default_factory=list)
