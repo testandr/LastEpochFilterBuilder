@@ -1,0 +1,85 @@
+{
+  "profile_metadata": {
+    "id": "test123",
+    "name": "Test Build"
+  },
+  "build_data": {
+    "profiles": [
+      {
+        "name": "Test Profile 1",
+        "class": 0,
+        "mastery": 0,
+        "level": 80,
+        "items": {
+          "weapon": 1,
+          "body": 2,
+          "finger1": {
+            "itemType": 21,
+            "subType": 0,
+            "uniqueID": 1,
+            "affixes": [
+              {"id": 0, "tier": 0, "roll": 1}
+            ]
+          },
+          "finger2": null
+        },
+        "idols": [
+          10,
+          null,
+          {
+            "itemType": 26,
+            "subType": 0,
+            "affixes": [
+              {"id": 3, "tier": 1, "roll": 1},
+              {"id": 4, "tier": 1, "roll": 1}
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Test Profile 2",
+        "class": 0,
+        "mastery": 1,
+        "level": 100,
+        "items": {
+          "weapon": 3,
+          "body": 2
+        },
+        "idols": []
+      }
+    ],
+    "activeProfile": 0,
+    "items": {
+      "1": {
+        "itemType": 8,
+        "subType": 0,
+        "uniqueID": 0,
+        "affixes": [
+          {"id": 0, "tier": 0, "roll": 1}
+        ]
+      },
+      "2": {
+        "itemType": 5,
+        "subType": 0,
+        "affixes": [
+          {"id": 2, "tier": 7, "roll": 1}
+        ]
+      },
+      "3": {
+        "itemType": 8,
+        "subType": 0,
+        "affixes": [
+          {"id": 1, "tier": 5, "roll": 1}
+        ]
+      },
+      "10": {
+        "itemType": 29,
+        "subType": 0,
+        "affixes": [
+          {"id": 3, "tier": 0, "roll": 1}
+        ]
+      }
+    }
+  }
+}
+

@@ -1,1 +1,1 @@
-"""analyzer package"""
+"""analyzer package for build analysis and filter candidate generation"""
