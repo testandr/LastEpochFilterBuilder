@@ -1,6 +1,7 @@
 """Tests for equipment_type_mapper.py
 
 Phase 0B1: Core equipment type mapping validation.
+Phase 0B3: Weapon and off-hand type mapping validation.
 """
 
 import pytest
@@ -47,6 +48,74 @@ class TestEquipmentTypeMappingConfirmed:
         assert map_equipment_type(22) == "RELIC"
 
 
+class TestWeaponTypeMappingConfirmed:
+    """Test confirmed weapon type mappings from weapon_offhand_evidence.xml (Phase 0B3)."""
+
+    def test_one_handed_axe_mapping(self):
+        """item_type 5 maps to ONE_HANDED_AXE."""
+        assert map_equipment_type(5) == "ONE_HANDED_AXE"
+
+    def test_dagger_mapping(self):
+        """item_type 6 maps to ONE_HANDED_DAGGER."""
+        assert map_equipment_type(6) == "ONE_HANDED_DAGGER"
+
+    def test_one_handed_mace_mapping(self):
+        """item_type 7 maps to ONE_HANDED_MACES."""
+        assert map_equipment_type(7) == "ONE_HANDED_MACES"
+
+    def test_sceptre_mapping(self):
+        """item_type 8 maps to ONE_HANDED_SCEPTRE."""
+        assert map_equipment_type(8) == "ONE_HANDED_SCEPTRE"
+
+    def test_one_handed_sword_mapping(self):
+        """item_type 9 maps to ONE_HANDED_SWORD."""
+        assert map_equipment_type(9) == "ONE_HANDED_SWORD"
+
+    def test_wand_mapping(self):
+        """item_type 10 maps to WAND."""
+        assert map_equipment_type(10) == "WAND"
+
+    def test_two_handed_axe_mapping(self):
+        """item_type 12 maps to TWO_HANDED_AXE."""
+        assert map_equipment_type(12) == "TWO_HANDED_AXE"
+
+    def test_two_handed_mace_mapping(self):
+        """item_type 13 maps to TWO_HANDED_MACE."""
+        assert map_equipment_type(13) == "TWO_HANDED_MACE"
+
+    def test_two_handed_spear_mapping(self):
+        """item_type 14 maps to TWO_HANDED_SPEAR."""
+        assert map_equipment_type(14) == "TWO_HANDED_SPEAR"
+
+    def test_two_handed_staff_mapping(self):
+        """item_type 15 maps to TWO_HANDED_STAFF."""
+        assert map_equipment_type(15) == "TWO_HANDED_STAFF"
+
+    def test_two_handed_sword_mapping(self):
+        """item_type 16 maps to TWO_HANDED_SWORD."""
+        assert map_equipment_type(16) == "TWO_HANDED_SWORD"
+
+    def test_bow_mapping(self):
+        """item_type 23 maps to BOW."""
+        assert map_equipment_type(23) == "BOW"
+
+
+class TestOffHandTypeMappingConfirmed:
+    """Test confirmed off-hand type mappings from weapon_offhand_evidence.xml (Phase 0B3)."""
+
+    def test_quiver_mapping(self):
+        """item_type 17 maps to QUIVER."""
+        assert map_equipment_type(17) == "QUIVER"
+
+    def test_shield_mapping(self):
+        """item_type 18 maps to SHIELD."""
+        assert map_equipment_type(18) == "SHIELD"
+
+    def test_catalyst_mapping(self):
+        """item_type 19 maps to CATALYST."""
+        assert map_equipment_type(19) == "CATALYST"
+
+
 class TestEquipmentTypeMappingDeterministic:
     """Test deterministic behavior and immutability."""
 
@@ -59,7 +128,8 @@ class TestEquipmentTypeMappingDeterministic:
 
     def test_all_confirmed_types_covered(self):
         """All confirmed equipment types return valid XML enum strings."""
-        confirmed_types = [0, 1, 2, 3, 4, 20, 21, 22]
+        # Core equipment + weapons + off-hand
+        confirmed_types = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
         for item_type in confirmed_types:
             result = map_equipment_type(item_type)
             assert isinstance(result, str)
@@ -85,7 +155,7 @@ class TestEquipmentTypeMappingSubType:
 
 
 class TestEquipmentTypeMappingErrorCases:
-    """Test explicit failure for unknown/out-of-scope types."""
+    """Test explicit failure for unknown/unmapped types."""
 
     def test_none_item_type_raises_error(self):
         """None item_type raises EquipmentTypeMappingError."""
@@ -93,23 +163,19 @@ class TestEquipmentTypeMappingErrorCases:
             map_equipment_type(None)
         assert "None" in str(exc_info.value)
 
-    def test_weapon_type_raises_explicit_error(self):
-        """Weapon item_type raises EquipmentTypeMappingError with explicit message."""
-        weapon_types = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 23, 24]
-        for item_type in weapon_types:
-            with pytest.raises(EquipmentTypeMappingError) as exc_info:
-                map_equipment_type(item_type)
-            assert "weapon" in str(exc_info.value).lower()
-            assert "0B1" in str(exc_info.value)
+    def test_fist_weapon_raises_explicit_error(self):
+        """Fist weapon (item_type 11) raises EquipmentTypeMappingError with explicit message."""
+        with pytest.raises(EquipmentTypeMappingError) as exc_info:
+            map_equipment_type(11)
+        assert "Fist" in str(exc_info.value)
+        assert "no XML EquipmentType evidence" in str(exc_info.value)
 
-    def test_offhand_type_raises_explicit_error(self):
-        """Off-hand item_type raises EquipmentTypeMappingError with explicit message."""
-        offhand_types = [17, 18, 19]
-        for item_type in offhand_types:
-            with pytest.raises(EquipmentTypeMappingError) as exc_info:
-                map_equipment_type(item_type)
-            assert "off-hand" in str(exc_info.value).lower()
-            assert "0B1" in str(exc_info.value)
+    def test_crossbow_raises_explicit_error(self):
+        """Crossbow (item_type 24) raises EquipmentTypeMappingError with explicit message."""
+        with pytest.raises(EquipmentTypeMappingError) as exc_info:
+            map_equipment_type(24)
+        assert "Crossbow" in str(exc_info.value)
+        assert "no XML EquipmentType evidence" in str(exc_info.value)
 
     def test_idol_type_raises_explicit_error(self):
         """Idol item_type raises EquipmentTypeMappingError with explicit message."""
@@ -155,14 +221,14 @@ class TestEquipmentTypeMappingXMLConformance:
 
     def test_all_uppercase(self):
         """All confirmed EquipmentType strings are uppercase."""
-        confirmed_types = [0, 1, 2, 3, 4, 20, 21, 22]
+        confirmed_types = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
         for item_type in confirmed_types:
             result = map_equipment_type(item_type)
             assert result.isupper()
 
     def test_no_whitespace(self):
         """EquipmentType strings contain no whitespace."""
-        confirmed_types = [0, 1, 2, 3, 4, 20, 21, 22]
+        confirmed_types = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
         for item_type in confirmed_types:
             result = map_equipment_type(item_type)
             assert " " not in result
@@ -173,6 +239,11 @@ class TestEquipmentTypeMappingXMLConformance:
         """BODY_ARMOR uses underscore (XML convention)."""
         assert map_equipment_type(1) == "BODY_ARMOR"
         assert "_" in map_equipment_type(1)
+
+    def test_weapon_names_use_underscore(self):
+        """Weapon EquipmentType names use underscore for multi-word names."""
+        assert "_" in map_equipment_type(5)  # ONE_HANDED_AXE
+        assert "_" in map_equipment_type(12)  # TWO_HANDED_AXE
 
 
 class TestEquipmentTypeMappingProjectSlots:

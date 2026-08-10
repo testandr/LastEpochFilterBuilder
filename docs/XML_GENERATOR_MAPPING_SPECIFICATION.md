@@ -293,69 +293,65 @@ Each tuple is (item_type, sub_type)
 
 Output: Multiple EquipmentType XML elements
 
-**RESOLVED (Phase 0B1):**
+**RESOLVED (Phase 0B1 + Phase 0B3):**
 
 Mapper: app/generator/equipment_type_mapper.py
 
 Function: map_equipment_type(item_type, sub_type=None) -> str
 
-Data source: game_data.json itemTypes array (confirmed from real extracted data)
+Data sources:
+- game_data.json itemTypes array (confirmed from real extracted data)
+- XML evidence: data/debug/filters/xml_semantics_test.xml (core equipment, idol)
+- XML evidence: data/debug/filters/weapon_offhand_evidence.xml (weapon, off-hand)
 
-Mapping table (confirmed core equipment slots):
+Complete mapping table (all confirmed equipment types):
 
-| item_type | displayName | XML EquipmentType |
-|-----------|-------------|-------------------|
-| 0         | Helmet      | HELMET            |
-| 1         | Body Armor  | BODY_ARMOR        |
-| 2         | Belt        | BELT              |
-| 3         | Boots       | BOOTS             |
-| 4         | Gloves      | GLOVES            |
-| 20        | Amulet      | AMULET            |
-| 21        | Ring        | RING              |
-| 22        | Relic       | RELIC             |
+Core Equipment (Phase 0B1):
+item_type 0 Helmet -> HELMET
+item_type 1 Body Armor -> BODY_ARMOR
+item_type 2 Belt -> BELT
+item_type 3 Boots -> BOOTS
+item_type 4 Gloves -> GLOVES
+item_type 20 Amulet -> AMULET
+item_type 21 Ring -> RING
+item_type 22 Relic -> RELIC
+
+One-Handed Weapons (Phase 0B3):
+item_type 5 One-Handed Axe -> ONE_HANDED_AXE
+item_type 6 Dagger -> ONE_HANDED_DAGGER
+item_type 7 One-Handed Mace -> ONE_HANDED_MACES
+item_type 8 Sceptre -> ONE_HANDED_SCEPTRE
+item_type 9 One-Handed Sword -> ONE_HANDED_SWORD
+item_type 10 Wand -> WAND
+
+Two-Handed Weapons (Phase 0B3):
+item_type 12 Two-Handed Axe -> TWO_HANDED_AXE
+item_type 13 Two-Handed Mace -> TWO_HANDED_MACE
+item_type 14 Two-Handed Spear -> TWO_HANDED_SPEAR
+item_type 15 Two-Handed Staff -> TWO_HANDED_STAFF
+item_type 16 Two-Handed Sword -> TWO_HANDED_SWORD
+
+Ranged Weapons (Phase 0B3):
+item_type 23 Bow -> BOW
+
+Off-Hand (Phase 0B3):
+item_type 17 Quiver -> QUIVER
+item_type 18 Shield -> SHIELD
+item_type 19 Off-Hand Catalyst -> CATALYST
+
+Unmapped types (no XML evidence):
+item_type 11 Fist weapon -> NO XML EVIDENCE (explicit error)
+item_type 24 Crossbow -> NO XML EVIDENCE (explicit error)
 
 Behavior:
 - Confirmed types return XML enum string
+- Unmapped types (Fist, Crossbow) raise EquipmentTypeMappingError with explicit message
+- Idol types (25-33) handled separately by idol_size_mapper.py (Phase 0B2)
 - Unknown types raise EquipmentTypeMappingError (explicit failure, no silent fallback)
-- Weapon types (5-16, 23-24) raise explicit out-of-scope error
-- Off-hand types (17-19) raise explicit out-of-scope error
-- Idol types (25-33) raise explicit out-of-scope error (handled in Phase 0B2)
 
-Status: RESOLVED for core equipment slots
+Status: RESOLVED for all equipment types with XML evidence (23 of 25 equipment item_types confirmed)
 
-Remaining gaps: Weapon and Off-hand EquipmentType values require additional research.
-
-**Phase 0B3 Research Status: INCOMPLETE - INSUFFICIENT XML EVIDENCE**
-
-Research findings:
-- Verified 17 weapon/off-hand item_type values in game_data.json (item types 5-19, 23-24)
-- Item types confirmed: One-Handed Axe, Dagger, One-Handed Mace, Sceptre, One-Handed Sword, Wand, Fist, Two-Handed Axe, Two-Handed Mace, Two-Handed Spear, Two-Handed Staff, Two-Handed Sword, Quiver, Shield, Off-Hand Catalyst, Bow, Crossbow
-- Searched all local XML files for weapon/off-hand EquipmentType enum evidence
-- Result: NO confirmed XML EquipmentType enum values for any weapon or off-hand type
-- Only XML file available: data/debug/filters/xml_semantics_test.xml (contains only core equipment and IDOL_2x1)
-- game_data.json provides displayName but NO XML-compatible EquipmentType or enum hints
-- Documentation contains ONLY generic references to "Weapon types" without enum values
-- No lootFilterNameOverride values present for weapon/off-hand types
-
-**Evidence gap:**
-Real Last Epoch XML filters containing weapon/off-hand SubTypeCondition rules are required to confirm exact EquipmentType enum strings.
-
-**Cannot implement mapping:**
-Without confirmed XML enum evidence, any weapon/off-hand mapping would be fabricated guesswork.
-Equipment type mapper Phase 0B1 implementation explicitly rejects weapon/off-hand types with EquipmentTypeMappingError.
-
-**Required for completion:**
-User must create real Last Epoch loot filter rules for:
-1. One-handed weapons (verify if item_type alone determines EquipmentType or if sub_type differentiates weapon types)
-2. Two-handed weapons
-3. Bow/Crossbow
-4. Shield
-5. Quiver
-6. Off-Hand Catalyst
-
-Export those filters as XML and add to repository for Phase 0B3 evidence-based mapping.
-
-Status: BLOCKED - MORE XML EVIDENCE REQUIRED
+Remaining gaps: Fist weapon and Crossbow have no XML EquipmentType evidence
 
 ### 7.2 SubType Handling
 
@@ -363,15 +359,15 @@ Source: OptimizedRule.item_types contains sub_type integers
 
 XML: subTypes element exists but semantics UNKNOWN
 
-Research conclusion: subTypes always empty in observed real XML
+Research conclusion: subTypes always empty in all observed real XML examples (xml_semantics_test.xml and weapon_offhand_evidence.xml)
+
+Phase 0B3 finding: weapon_offhand_evidence.xml contains weapons and off-hand with empty subTypes element (line 48)
 
 Current RuleOptimizer: Does NOT merge different sub_type values
 
 Decision for v1: Leave subTypes empty
 
 Equipment type mapper: sub_type parameter accepted but currently unused
-
-Phase 0B1 finding: sub_type does not affect EquipmentType selection for confirmed core equipment slots
 
 Consequence: Generated rules may be wider than original technical base filtering
 
@@ -900,75 +896,70 @@ These are required for XML but missing or lossy in current model:
 
 ## 15. Blocking Gaps Summary
 
-**Phase 0B3 Status: INCOMPLETE - XML EVIDENCE REQUIRED ⚠️**
+**Phase 0B3 Status: COMPLETE ✅**
 
-CORE BLOCKING GAPS RESOLVED for currently supported equipment/idol types:
+ALL CORE BLOCKING GAPS RESOLVED:
 
 1. ~~Affix ID loss (exalted affixes)~~ — ✅ RESOLVED Phase 0A
 2. ~~Affix ID loss (idol modifiers)~~ — ✅ RESOLVED Phase 0A
-3. ~~Item type -> EquipmentType mapping missing~~ — ✅ RESOLVED Phase 0B1 (core equipment)
+3. ~~Item type -> EquipmentType mapping missing~~ — ✅ RESOLVED Phase 0B1 (core equipment) + Phase 0B3 (weapon/off-hand)
 4. ~~Idol size format conversion needed~~ — ✅ RESOLVED Phase 0B2 (parser-supported idols)
 
-WEAPON/OFF-HAND MAPPING GAPS REMAIN UNRESOLVED:
+**Phase 0B3 Completion Summary:**
 
-5. Weapon EquipmentType mapping — ⚠️ BLOCKED (Phase 0B3 research incomplete)
-6. Off-hand EquipmentType mapping — ⚠️ BLOCKED (Phase 0B3 research incomplete)
+XML evidence source:
+- Added: data/debug/filters/weapon_offhand_evidence.xml
+- Contains real Last Epoch EquipmentType values for weapons and off-hand items
 
-**Phase 0B3 Research Summary:**
+Confirmed mappings:
+- 23 of 25 equipment item_type values successfully mapped
+- 6 one-handed weapons: ONE_HANDED_AXE, ONE_HANDED_DAGGER, ONE_HANDED_MACES, ONE_HANDED_SCEPTRE, ONE_HANDED_SWORD, WAND
+- 5 two-handed weapons: TWO_HANDED_AXE, TWO_HANDED_MACE, TWO_HANDED_SPEAR, TWO_HANDED_STAFF, TWO_HANDED_SWORD
+- 1 ranged weapon: BOW
+- 3 off-hand types: QUIVER, SHIELD, CATALYST
+- 8 core equipment types: HELMET, BODY_ARMOR, BELT, BOOTS, GLOVES, AMULET, RING, RELIC
 
-Verified 17 weapon/off-hand item_type values exist in game_data.json:
-- 12 weapon types: item_type 5-16, 23-24
-- 3 off-hand types: item_type 17-19
-
-XML evidence search results:
-- Searched: data/debug/filters/xml_semantics_test.xml (only available XML file)
-- Found: Core equipment (HELMET, BODY_ARMOR, BELT, BOOTS, GLOVES, AMULET, RING, RELIC) and IDOL_2x1
-- NOT found: Any weapon or off-hand EquipmentType enum values
-
-Conclusion: Cannot implement evidence-based weapon/off-hand mapping without real XML examples.
+Unmapped types (no XML evidence):
+- Fist weapon (item_type 11): No EquipmentType found in XML evidence
+- Crossbow (item_type 24): No EquipmentType found in XML evidence
 
 **Current XML Generator capability:**
 
 Can produce valid rules for:
-- Exalted items: Core equipment slots only (Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic)
+- Exalted items: All mapped equipment types (23 of 25)
+  - Core equipment: Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic
+  - One-handed weapons: Axe, Dagger, Mace, Sceptre, Sword, Wand
+  - Two-handed weapons: Axe, Mace, Spear, Staff, Sword
+  - Ranged: Bow
+  - Off-hand: Quiver, Shield, Catalyst
 - Idol items: Parser-supported sizes (Minor 1x1, Humble 1x2, Grand 1x3, Adorned 1x4)
 - Unique items: All unique IDs (no equipment type filtering needed)
 
 Cannot produce rules for:
-- Weapon exalted items (mapping unknown)
-- Off-hand exalted items (mapping unknown)
+- Fist weapon exalted items (no XML EquipmentType evidence)
+- Crossbow exalted items (no XML EquipmentType evidence)
 
-**Next action required:**
+**REMAINING GAPS (NON-BLOCKING):**
 
-Create real Last Epoch loot filter rules in-game for weapon/off-hand item types, export as XML, add to repository for Phase 0B3 evidence-based mapping completion.
+5. Fist weapon EquipmentType — ⚠️ NO XML EVIDENCE
+   - XML evidence search: Not found in weapon_offhand_evidence.xml
+   - Impact: Cannot generate Fist weapon exalted rules
+   - Workaround: Parser can still detect Fist items, mapper will fail explicitly
+   - Status: INCOMPLETE
 
-**REMAINING GAPS (BLOCKING for weapon/off-hand exalted rules):**
-
-5. **Weapon EquipmentType mapping — ⚠️ BLOCKED (Phase 0B3 incomplete)**
-   - Research completed: 12 weapon item_type values verified in game_data (5-16, 23-24)
-   - XML evidence: NONE - no weapon EquipmentType enums confirmed in available XML files
-   - Impact: Cannot generate weapon exalted rules
-   - Required: Real Last Epoch XML filters containing weapon SubTypeCondition rules
-   - Status: BLOCKED - MORE XML EVIDENCE REQUIRED
-
-6. **Off-hand EquipmentType mapping — ⚠️ BLOCKED (Phase 0B3 incomplete)**
-   - Research completed: 3 off-hand item_type values verified in game_data (17-19: Quiver, Shield, Off-Hand Catalyst)
-   - XML evidence: NONE - no off-hand EquipmentType enums confirmed in available XML files
-   - Impact: Cannot generate off-hand exalted rules
-   - Required: Real Last Epoch XML filters containing off-hand SubTypeCondition rules
-   - Status: BLOCKED - MORE XML EVIDENCE REQUIRED
-
-**NON-BLOCKING GAPS:**
+6. Crossbow EquipmentType — ⚠️ NO XML EVIDENCE
+   - XML evidence search: Not found in weapon_offhand_evidence.xml
+   - Impact: Cannot generate Crossbow exalted rules
+   - Workaround: Parser can still detect Crossbow items, mapper will fail explicitly
+   - Status: INCOMPLETE
 
 7. Additional idol sizes (25, 28, 30, 31, 32, 41) not mapped by parser
 
-Weapon and off-hand exalted rules cannot be generated until Phase 0B3 research completes with real XML evidence.
-
 **Verification:**
 - Affix ID preservation: tests/test_phase_0a_affix_id.py (4/4 passed)
-- EquipmentType mapping: tests/test_equipment_type_mapper.py (31/31 passed)
+- EquipmentType mapping: tests/test_equipment_type_mapper.py (47/47 passed, +16 new weapon/off-hand tests)
 - IdolSize mapping: tests/test_idol_size_mapper.py (35/35 passed)
-- Total test coverage: 232 passed, 1 skipped, 0 failed
+- Total test coverage: 249 passed, 0 failed (+16 tests from Phase 0B3)
 
 ## 16. Non-Blocking Gaps Summary
 
