@@ -5,12 +5,14 @@ from app.parsers.build_parser import BuildParser
 
 
 def load_fixture():
-    p = Path("tests/data/html/build_page_metadata_real.html")
+    test_dir = Path(__file__).parent
+    p = test_dir / "data" / "html" / "build_page_metadata_real.html"
     return p.read_text(encoding="utf-8")
 
 
 def load_expected():
-    p = Path("tests/data/json/build_page_metadata_real.json")
+    test_dir = Path(__file__).parent
+    p = test_dir / "data" / "json" / "build_page_metadata_real.json"
     return json.loads(p.read_text(encoding="utf-8"))
 
 

@@ -15,11 +15,13 @@ class DummyClient:
 
 def test_expected_json_not_overwritten(tmp_path, monkeypatch):
     # prepare: copy existing expected to tmp location and run run_check pointing tests to tmp
-    expected_file = Path("tests/data/json/build_page_metadata_real.json")
+    test_dir = Path(__file__).parent
+    expected_file = test_dir / "data" / "json" / "build_page_metadata_real.json"
     original = expected_file.read_text(encoding="utf-8")
 
     # prepare a dummy client returning fixture content
-    html = Path("tests/data/html/build_page_metadata_real.html").read_text(encoding="utf-8")
+    html_file = test_dir / "data" / "html" / "build_page_metadata_real.html"
+    html = html_file.read_text(encoding="utf-8")
     client = DummyClient(html)
 
     # run without update_fixtures

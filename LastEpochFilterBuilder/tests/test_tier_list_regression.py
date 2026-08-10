@@ -5,12 +5,14 @@ from app.parsers.tier_list_parser import TierListParser
 
 
 def load_fixture(name: str) -> str:
-    p = Path("tests/data/html") / name
+    test_dir = Path(__file__).parent
+    p = test_dir / "data" / "html" / name
     return p.read_text(encoding="utf-8")
 
 
 def load_expected(name: str):
-    p = Path("tests/data/json") / name
+    test_dir = Path(__file__).parent
+    p = test_dir / "data" / "json" / name
     return json.loads(p.read_text(encoding="utf-8"))
 
 

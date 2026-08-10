@@ -1,8 +1,11 @@
+from pathlib import Path
 from app.parsers.equipment_structure_parser import parse_html
 
 
 def test_equipment_layout_fixture_basic():
-    html = open("tests/data/html/equipment_layout_fixture.html", "r", encoding="utf-8").read()
+    test_dir = Path(__file__).parent
+    html_file = test_dir / "data" / "html" / "equipment_layout_fixture.html"
+    html = html_file.read_text(encoding="utf-8")
     layout = parse_html(html)
     assert layout.container_selector is not None
     assert len(layout.slots) == 6
