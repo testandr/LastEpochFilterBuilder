@@ -353,12 +353,12 @@ def _create_affix_condition_exalted(parent: ET.Element, rule: OptimizedRule) -> 
     min_on_same = ET.SubElement(condition, "minOnTheSameItem")
     min_on_same.text = str(len(rule.affixes))
 
-    # Combined comparison (unused)
+    # Combined comparison
     combined_comp = ET.SubElement(condition, "combinedComparsion")
     combined_comp.text = "ANY"
 
     combined_value = ET.SubElement(condition, "combinedComparsionValue")
-    combined_value.text = "0"
+    combined_value.text = str(tier * len(rule.affixes))  # Total tier sum
 
     # Advanced flag
     advanced = ET.SubElement(condition, "advanced")
@@ -391,16 +391,16 @@ def _create_affix_condition_idol(parent: ET.Element, rule: OptimizedRule) -> Non
     comparsion_value = ET.SubElement(condition, "comparsionValue")
     comparsion_value.text = "0"
 
-    # Required count (all modifiers required)
+    # Required count - only 1 of the selected modifiers required for idols
     min_on_same = ET.SubElement(condition, "minOnTheSameItem")
-    min_on_same.text = str(len(rule.modifiers))
+    min_on_same.text = "1"
 
-    # Combined comparison (unused)
+    # Combined comparison - count of modifier matches
     combined_comp = ET.SubElement(condition, "combinedComparsion")
     combined_comp.text = "ANY"
 
     combined_value = ET.SubElement(condition, "combinedComparsionValue")
-    combined_value.text = "0"
+    combined_value.text = "1"
 
     # Advanced flag
     advanced = ET.SubElement(condition, "advanced")
@@ -416,15 +416,16 @@ def _create_unique_condition(parent: ET.Element, rule: OptimizedRule) -> None:
 
     Note:
         Assumes validation has already confirmed all unique IDs are present.
-        Generates minimal roll structure (2 rolls with nil values per unique).
+        Generates one Uniques container per unique item with minimal roll structure.
     """
     condition = ET.SubElement(parent, "Condition")
     condition.set("{http://www.w3.org/2001/XMLSchema-instance}type", "UniqueModifiersCondition")
 
-    # Create Uniques element for each unique item
+    # Create one Uniques element per unique item
     for unique_id, name in sorted(rule.unique_items):
         uniques = ET.SubElement(condition, "Uniques")
 
+        # UniqueId directly inside Uniques
         unique_id_elem = ET.SubElement(uniques, "UniqueId")
         unique_id_elem.text = str(unique_id)
 
@@ -559,9 +560,11 @@ def generate(result: OptimizationResult, metadata: Optional[Dict[str, Any]] = No
     game_version = metadata.get("lastModifiedInVersion", DEFAULT_GAME_VERSION)
     filter_version = metadata.get("lootFilterVersion", DEFAULT_FILTER_VERSION)
 
-    # Create root element
+    # Create root element with namespace
+    # Register 'i' prefix globally - this will be used for i:type attributes
+    # and automatically add xmlns:i declaration to root
+    ET.register_namespace("i", "http://www.w3.org/2001/XMLSchema-instance")
     root = ET.Element("ItemFilter")
-    root.set("xmlns:i", "http://www.w3.org/2001/XMLSchema-instance")
 
     # Metadata
     name = ET.SubElement(root, "name")
@@ -586,9 +589,11 @@ def generate(result: OptimizationResult, metadata: Optional[Dict[str, Any]] = No
     # Rules container
     rules_elem = ET.SubElement(root, "rules")
 
-    # Generate rules with sequential Order
+    # Generate rules with reversed Order (first rule gets N-1, last gets 0)
+    total_rules = len(result.rules)
     for index, rule in enumerate(result.rules):
-        _create_rule_element(rules_elem, rule, order=index, index=index)
+        order = total_rules - 1 - index  # Reverse Order
+        _create_rule_element(rules_elem, rule, order=order, index=index)
 
     # Convert to string with proper formatting
     _indent(root)

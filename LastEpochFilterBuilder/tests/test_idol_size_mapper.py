@@ -20,41 +20,41 @@ class TestIdolSizeMappingConfirmed:
         assert map_idol_size("Minor Idol (1x1)") == "IDOL_1x1"
 
     def test_humble_idol_1x2(self):
-        """Humble Idol (1x2) maps to IDOL_1x2."""
-        assert map_idol_size("Humble Idol (1x2)") == "IDOL_1x2"
+        """Humble Idol (1x2) maps to IDOL_2x1 (dimensions reversed in XML)."""
+        assert map_idol_size("Humble Idol (1x2)") == "IDOL_2x1"
 
     def test_grand_idol_1x3(self):
-        """Grand Idol (1x3) maps to IDOL_1x3."""
-        assert map_idol_size("Grand Idol (1x3)") == "IDOL_1x3"
+        """Grand Idol (1x3) maps to IDOL_3x1 (dimensions reversed in XML)."""
+        assert map_idol_size("Grand Idol (1x3)") == "IDOL_3x1"
 
     def test_adorned_idol_1x4(self):
-        """Adorned Idol (1x4) maps to IDOL_1x4."""
-        assert map_idol_size("Adorned Idol (1x4)") == "IDOL_1x4"
+        """Adorned Idol (1x4) maps to IDOL_4x1 (dimensions reversed in XML)."""
+        assert map_idol_size("Adorned Idol (1x4)") == "IDOL_4x1"
 
 
 class TestIdolSizeMappingDimensionExtraction:
     """Test dimension extraction from various formats."""
 
     def test_dimension_extraction_basic(self):
-        """Extract dimensions from basic format."""
-        assert map_idol_size("Some Idol (2x3)") == "IDOL_2x3"
+        """Extract dimensions from basic format (reversed for XML)."""
+        assert map_idol_size("Some Idol (2x3)") == "IDOL_3x2"
 
     def test_dimension_extraction_ignores_name(self):
-        """Idol name is ignored, only dimensions matter."""
+        """Idol name is ignored, only dimensions matter (reversed for XML)."""
         assert map_idol_size("Custom Name (1x1)") == "IDOL_1x1"
-        assert map_idol_size("Another (1x2)") == "IDOL_1x2"
+        assert map_idol_size("Another (1x2)") == "IDOL_2x1"
 
     def test_dimension_extraction_with_whitespace(self):
         """Handles leading/trailing whitespace."""
         assert map_idol_size("  Minor Idol (1x1)  ") == "IDOL_1x1"
-        assert map_idol_size("\tGrand Idol (1x3)\n") == "IDOL_1x3"
+        assert map_idol_size("\tGrand Idol (1x3)\n") == "IDOL_3x1"
 
     def test_dimension_extraction_two_digit_dimensions(self):
-        """Handles two-digit dimensions (hypothetical future idols)."""
-        assert map_idol_size("Giant Idol (10x5)") == "IDOL_10x5"
+        """Handles two-digit dimensions (hypothetical future idols, reversed for XML)."""
+        assert map_idol_size("Giant Idol (10x5)") == "IDOL_5x10"
 
     def test_dimension_pattern_strict(self):
-        """Only accepts (WxH) pattern, not variations."""
+        """Only accepts (WxH) pattern, not variations (reversed for XML)."""
         # Valid patterns
         assert map_idol_size("Idol (1x1)") == "IDOL_1x1"
         assert map_idol_size("Idol (2x2)") == "IDOL_2x2"
@@ -166,16 +166,16 @@ class TestIdolItemTypeMappingConfirmed:
         assert map_idol_item_type(26) == "IDOL_1x1"
 
     def test_item_type_27_humble_idol(self):
-        """item_type 27 maps to IDOL_1x2."""
-        assert map_idol_item_type(27) == "IDOL_1x2"
+        """item_type 27 maps to IDOL_2x1 (reversed dimensions)."""
+        assert map_idol_item_type(27) == "IDOL_2x1"
 
     def test_item_type_29_grand_idol(self):
-        """item_type 29 maps to IDOL_1x3."""
-        assert map_idol_item_type(29) == "IDOL_1x3"
+        """item_type 29 maps to IDOL_3x1 (reversed dimensions)."""
+        assert map_idol_item_type(29) == "IDOL_3x1"
 
     def test_item_type_33_adorned_idol(self):
-        """item_type 33 maps to IDOL_1x4."""
-        assert map_idol_item_type(33) == "IDOL_1x4"
+        """item_type 33 maps to IDOL_4x1 (reversed dimensions)."""
+        assert map_idol_item_type(33) == "IDOL_4x1"
 
 
 class TestIdolItemTypeMappingErrorCases:
@@ -261,19 +261,19 @@ class TestIdolSizeMappingConsistency:
         assert result_item_type == result_size_str == "IDOL_1x1"
 
     def test_item_type_27_matches_humble_idol_string(self):
-        """item_type 27 produces same result as Humble Idol (1x2) string."""
+        """item_type 27 produces same result as Humble Idol (1x2) string (reversed to IDOL_2x1)."""
         result_item_type = map_idol_item_type(27)
         result_size_str = map_idol_size("Humble Idol (1x2)")
-        assert result_item_type == result_size_str == "IDOL_1x2"
+        assert result_item_type == result_size_str == "IDOL_2x1"
 
     def test_item_type_29_matches_grand_idol_string(self):
-        """item_type 29 produces same result as Grand Idol (1x3) string."""
+        """item_type 29 produces same result as Grand Idol (1x3) string (reversed to IDOL_3x1)."""
         result_item_type = map_idol_item_type(29)
         result_size_str = map_idol_size("Grand Idol (1x3)")
-        assert result_item_type == result_size_str == "IDOL_1x3"
+        assert result_item_type == result_size_str == "IDOL_3x1"
 
     def test_item_type_33_matches_adorned_idol_string(self):
-        """item_type 33 produces same result as Adorned Idol (1x4) string."""
+        """item_type 33 produces same result as Adorned Idol (1x4) string (reversed to IDOL_4x1)."""
         result_item_type = map_idol_item_type(33)
         result_size_str = map_idol_size("Adorned Idol (1x4)")
-        assert result_item_type == result_size_str == "IDOL_1x4"
+        assert result_item_type == result_size_str == "IDOL_4x1"

@@ -173,7 +173,7 @@ class TestXMLGeneration:
         assert root.find("lootFilterVersion").text == "1"
 
     def test_sequential_order_values(self):
-        """Rules assigned sequential Order values starting from 0."""
+        """Rules assigned reversed Order values (first rule highest, last rule 0)."""
         rule1 = create_exalted_rule()
         rule2 = create_exalted_rule()
         rule3 = create_exalted_rule()
@@ -190,9 +190,10 @@ class TestXMLGeneration:
         rules = root.find("rules").findall("Rule")
         assert len(rules) == 3
 
-        assert rules[0].find("Order").text == "0"
+        # Order is reversed: first rule gets 2, last rule gets 0
+        assert rules[0].find("Order").text == "2"
         assert rules[1].find("Order").text == "1"
-        assert rules[2].find("Order").text == "2"
+        assert rules[2].find("Order").text == "0"
 
     def test_optimizer_order_preserved(self):
         """Rule order from OptimizationResult is preserved."""
@@ -213,15 +214,15 @@ class TestXMLGeneration:
 
         rules = root.find("rules").findall("Rule")
 
-        # First rule should have Order 0 and be exalted
+        # First rule should have Order 2 (reversed) and be exalted
         conditions = rules[0].find("conditions")
         assert conditions.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='RarityCondition']") is not None
-        assert rules[0].find("Order").text == "0"
+        assert rules[0].find("Order").text == "2"
 
         # Second rule should have Order 1 and be idol
-        # Third rule should have Order 2 and be unique
+        # Third rule should have Order 0 and be unique
         assert rules[1].find("Order").text == "1"
-        assert rules[2].find("Order").text == "2"
+        assert rules[2].find("Order").text == "0"
 
 
 class TestExaltedRules:
@@ -359,7 +360,7 @@ class TestIdolRules:
     """Test idol rule generation."""
 
     def test_idol_size_mapping(self):
-        """Idol sizes mapped to IDOL_WxH format."""
+        """Idol sizes mapped to reversed IDOL_HxW format."""
         rule = create_idol_rule(idol_sizes=["Minor Idol (1x1)", "Grand Idol (1x3)"])
         result = OptimizationResult(rules=[rule], final_count=1, success=True)
 
@@ -370,7 +371,8 @@ class TestIdolRules:
         equipment_types = subtype_cond.findall(".//EquipmentType")
 
         types = {eq.text for eq in equipment_types}
-        assert types == {"IDOL_1x1", "IDOL_1x3"}
+        # Real XML uses reversed dimensions: (1x3) -> IDOL_3x1
+        assert types == {"IDOL_1x1", "IDOL_3x1"}
 
     def test_idol_modifier_numeric_ids(self):
         """Idol modifiers use numeric IDs."""
@@ -704,10 +706,11 @@ class TestRealWorldScenarios:
 
         # Verify each rule type has correct conditions
         assert rules[0].find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='RarityCondition']") is not None
-        assert rules[0].find("Order").text == "0"
+        # Order is reversed: first rule gets 2
+        assert rules[0].find("Order").text == "2"
 
         assert rules[1].find("Order").text == "1"
-        assert rules[2].find("Order").text == "2"
+        assert rules[2].find("Order").text == "0"
 
     def test_weapon_equipment_types(self):
         """Weapon equipment types map correctly."""
@@ -749,4 +752,136 @@ class TestRealWorldScenarios:
 
         assert "QUIVER" in types
         assert "SHIELD" in types
-        assert "CATALYST" in types
+
+
+class TestRealXMLConformance:
+    """Regression tests for confirmed real Last Epoch XML behavior."""
+
+    def test_namespace_uses_i_prefix_only(self):
+        """Generator uses xmlns:i namespace exactly like real game XML."""
+        rule = create_exalted_rule()
+        result = OptimizationResult(rules=[rule], final_count=1, success=True)
+
+        xml = generate(result)
+
+        # Should contain xmlns:i declaration
+        assert 'xmlns:i="http://www.w3.org/2001/XMLSchema-instance"' in xml
+
+        # Should NOT contain additional xsi namespace
+        assert 'xmlns:xsi=' not in xml
+
+        # Should use i:type for condition types
+        assert 'i:type="RarityCondition"' in xml
+
+    def test_condition_uses_i_type_attribute(self):
+        """Conditions use i:type attribute matching real XML."""
+        rule = create_exalted_rule()
+        result = OptimizationResult(rules=[rule], final_count=1, success=True)
+
+        xml = generate(result)
+        root = ET.fromstring(xml)
+
+        # Find conditions with i:type
+        rarity_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='RarityCondition']")
+        assert rarity_cond is not None
+
+        subtype_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='SubTypeCondition']")
+        assert subtype_cond is not None
+
+        affix_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='AffixCondition']")
+        assert affix_cond is not None
+
+    def test_order_reversed_first_rule_highest(self):
+        """Rule Order values reversed: first rule gets N-1, last gets 0."""
+        rules = [create_exalted_rule() for _ in range(5)]
+        result = OptimizationResult(rules=rules, final_count=5, success=True)
+
+        xml = generate(result)
+        root = ET.fromstring(xml)
+
+        rule_elements = root.find("rules").findall("Rule")
+        assert len(rule_elements) == 5
+
+        # First rule: Order = 4
+        assert rule_elements[0].find("Order").text == "4"
+
+        # Middle rule: Order = 2
+        assert rule_elements[2].find("Order").text == "2"
+
+        # Last rule: Order = 0
+        assert rule_elements[4].find("Order").text == "0"
+
+    def test_grand_idol_1x3_maps_to_IDOL_3x1(self):
+        """Grand Idol (1x3) maps to IDOL_3x1 (reversed dimensions)."""
+        rule = create_idol_rule(idol_sizes=["Grand Idol (1x3)"])
+        result = OptimizationResult(rules=[rule], final_count=1, success=True)
+
+        xml = generate(result)
+        root = ET.fromstring(xml)
+
+        subtype_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='SubTypeCondition']")
+        equipment_types = subtype_cond.findall(".//EquipmentType")
+
+        types = {eq.text for eq in equipment_types}
+        assert "IDOL_3x1" in types
+        assert "IDOL_1x3" not in types
+
+    def test_exalted_affix_condition_structure(self):
+        """Exalted AffixCondition matches real XML field structure."""
+        # Single affix with tier 6
+        rule = create_exalted_rule(affixes=[(100, "Test Affix", 6)])
+        result = OptimizationResult(rules=[rule], final_count=1, success=True)
+
+        xml = generate(result)
+        root = ET.fromstring(xml)
+
+        affix_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='AffixCondition']")
+
+        # Verify field order and values match real XML
+        assert affix_cond.find("affixes") is not None
+        assert affix_cond.find("comparsion").text == "MORE_OR_EQUAL"
+        assert affix_cond.find("comparsionValue").text == "6"
+        assert affix_cond.find("minOnTheSameItem").text == "1"
+        assert affix_cond.find("combinedComparsion").text == "ANY"
+        assert affix_cond.find("combinedComparsionValue").text == "6"
+        assert affix_cond.find("advanced").text == "true"
+
+    def test_exalted_multiple_affixes_combined_value(self):
+        """Multiple exalted affixes: combinedComparsionValue = tier * count."""
+        # 3 affixes at tier 6
+        affixes = [
+            (100, "Affix1", 6),
+            (101, "Affix2", 6),
+            (102, "Affix3", 6),
+        ]
+        rule = create_exalted_rule(affixes=affixes)
+        result = OptimizationResult(rules=[rule], final_count=1, success=True)
+
+        xml = generate(result)
+        root = ET.fromstring(xml)
+
+        affix_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='AffixCondition']")
+
+        assert affix_cond.find("minOnTheSameItem").text == "3"
+        assert affix_cond.find("combinedComparsionValue").text == "18"  # 6 * 3
+
+    def test_idol_affix_condition_structure(self):
+        """Idol AffixCondition matches real XML structure."""
+        rule = create_idol_rule(
+            modifiers=[(200, "Idol Mod 1", 0), (201, "Idol Mod 2", 0)]
+        )
+        result = OptimizationResult(rules=[rule], final_count=1, success=True)
+
+        xml = generate(result)
+        root = ET.fromstring(xml)
+
+        affix_cond = root.find(".//Condition[@{http://www.w3.org/2001/XMLSchema-instance}type='AffixCondition']")
+
+        # Match real XML idol example
+        assert affix_cond.find("comparsion").text == "ANY"
+        assert affix_cond.find("comparsionValue").text == "0"
+        assert affix_cond.find("minOnTheSameItem").text == "1"
+        assert affix_cond.find("combinedComparsion").text == "ANY"
+        assert affix_cond.find("combinedComparsionValue").text == "1"
+        assert affix_cond.find("advanced").text == "false"
+

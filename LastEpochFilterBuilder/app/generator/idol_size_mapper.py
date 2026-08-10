@@ -68,7 +68,9 @@ def map_idol_size(size: Optional[str]) -> str:
     width = match.group(1)
     height = match.group(2)
 
-    return f"IDOL_{width}x{height}"
+    # Last Epoch XML uses REVERSED dimensions: parser (WxH) -> XML IDOL_HxW
+    # Example: "Humble Idol (1x2)" -> IDOL_2x1
+    return f"IDOL_{height}x{width}"
 
 
 def map_idol_item_type(item_type: Optional[int]) -> str:
