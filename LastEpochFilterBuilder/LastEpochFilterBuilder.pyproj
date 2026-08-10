@@ -21,7 +21,15 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="app\generator\rule_optimizer.py" />
+    <Compile Include="convert_fixtures.py" />
+    <Compile Include="fix_test_fixtures.py" />
     <Compile Include="LastEpochFilterBuilder.py" />
+    <Compile Include="tests\test_phase_0a_affix_id.py" />
+    <Compile Include="tests\test_rule_optimizer.py" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="docs\PHASE_0A_SUMMARY.md" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
