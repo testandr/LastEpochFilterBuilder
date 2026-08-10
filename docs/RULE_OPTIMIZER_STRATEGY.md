@@ -2,7 +2,11 @@
 
 ## Overview
 
-RuleOptimizer is responsible for reducing the number of FilterRule objects from RuleBuilder to meet the Last Epoch 140-rule hard limit while preserving maximum build coverage and value.
+RuleOptimizer is responsible for reducing the number of FilterRule objects from RuleBuilder to meet the project's automatic rule generation budget while preserving maximum build coverage and value.
+
+Last Epoch game maximum: 200 rules
+Project automatic generation budget: 140 rules (configurable via filter.max_rules)
+Reserved for manual user rules: approximately 60 rules
 
 This document defines the research-driven strategy for safe rule merging, lossy pruning, and rule budget allocation.
 
@@ -134,18 +138,21 @@ Example:
   Rule 1: Helmet (type=1, sub=0) + Affix X
   Rule 2: Body Armour (type=2, sub=0) + Affix X
 Condition: Same affixes, different base_key
-Result: CONDITIONAL - only if XML supports multi-base matching in one rule
-XML Requirement: UNCONFIRMED - need to verify if Last Epoch XML allows one rule to match multiple itemType values.
-Recommendation: Do NOT merge until XML capability confirmed.
+Result: NOW CONFIRMED SAFE - XML supports multiple EquipmentType values in one SubTypeCondition
+XML Evidence: Real Last Epoch filter shows multiple EquipmentType elements (HELMET, BOOTS, GLOVES) in single SubTypeCondition
+Merge requirements: Identical action, style, affixes, tier requirements
+Statistics: sum build_count, union sources, merge item types into list
+Recommendation: SAFE to implement in RuleOptimizer
 
 CASE D: Same Slot + Different ItemType/SubType
 Example:
   Rule 1: Gloves (type=13, sub=0)
   Rule 2: Gloves (type=13, sub=1)
 Condition: Same slot string, different type/subType
-Result: CONDITIONAL - depending on XML slot-level matching
-XML Requirement: UNCONFIRMED - can one rule match all itemTypes within a slot?
-Recommendation: Do NOT merge until XML semantics confirmed.
+Result: NOW CONFIRMED SAFE - XML supports multiple EquipmentType values
+XML Evidence: Multiple EquipmentType elements can represent different subtypes
+Merge requirements: Identical action, style, affixes
+Recommendation: SAFE to implement if represented as different EquipmentType values
 
 CASE E: Different Affix Tiers
 Example:
@@ -181,9 +188,10 @@ Example:
   Rule 1: Grand Idol (1x3) + Modifier X
   Rule 2: Large Idol (1x2) + Modifier X
 Condition: Same modifiers, different idol size
-Result: CONDITIONAL - only if XML supports multi-size idol matching
-XML Requirement: UNCONFIRMED
-Recommendation: Do NOT merge until confirmed.
+Result: NOW CONFIRMED SAFE - XML supports multiple idol sizes as multiple EquipmentType values
+XML Evidence: Idol sizes represented as EquipmentType (IDOL_2x1, etc.); multiple EquipmentType values supported
+Merge requirements: Identical action, style, modifiers
+Recommendation: SAFE to implement in RuleOptimizer
 
 CASE D: Single-Modifier vs Multi-Modifier Idol
 Example:
@@ -207,9 +215,10 @@ Example:
   Rule 1: Ravenous Void (Ring)
   Rule 2: Throne of Ambition (Ring)
 Condition: Different uniques, same slot
-Result: CONDITIONAL - only if XML supports multi-unique-ID lists in one rule
-XML Requirement: UNCONFIRMED - can one XML rule match multiple unique item names or IDs?
-Recommendation: If XML supports list of unique IDs in one condition, SAFE. Otherwise keep separate.
+Result: NOW CONFIRMED SAFE - XML supports multiple Uniques in one UniqueModifiersCondition
+XML Evidence: Real Last Epoch filter shows three Uniques elements (IDs 300, 296, 144) in single UniqueModifiersCondition
+Merge requirements: Identical action, style
+Recommendation: SAFE to implement in RuleOptimizer
 
 CASE C: Same Name Different IDs
 Example:
@@ -221,25 +230,32 @@ Recommendation: Keep separate unless confirmed identical by game data.
 
 ## Merge Matrix
 
+Based on XML research (see docs/LAST_EPOCH_FILTER_XML_SPECIFICATION.md)
+
 Category: EXALTED
 Identity: same base + same affixes -> SAFE (exact duplicate)
 Identity: same base + different affixes -> UNSAFE (partial overlap introduces extra combinations)
-Identity: different base + same affixes -> CONDITIONAL (XML unconfirmed)
-Identity: same slot different type/sub -> CONDITIONAL (XML unconfirmed)
+Identity: different base + same affixes -> NOW CONFIRMED SAFE (XML supports multiple EquipmentType in one SubTypeCondition)
+Identity: same slot different type/sub -> NOW CONFIRMED SAFE (XML supports multiple EquipmentType)
 Tiers: same affix different tiers -> CONDITIONAL (lossless only if action/style/priority/order identical)
 
 Category: IDOL
 Identity: same size + same modifiers -> SAFE (exact duplicate)
 Identity: same size + different modifiers -> UNSAFE (boolean mismatch)
-Identity: different size + same modifiers -> CONDITIONAL (XML unconfirmed)
+Identity: different size + same modifiers -> NOW CONFIRMED SAFE (XML supports multiple idol sizes in one SubTypeCondition)
 Subset: single vs multi-modifier -> UNSAFE (semantic difference)
 
 Category: UNIQUE
 Identity: same name + same id -> SAFE (exact duplicate)
-Identity: different uniques same slot -> CONDITIONAL (XML unconfirmed)
+Identity: different uniques same slot -> NOW CONFIRMED SAFE (XML supports multiple Uniques in one UniqueModifiersCondition)
 Identity: same name different id -> UNSAFE (likely data issue)
 
-Note: CONDITIONAL means merge ONLY if XML capability is confirmed AND lossless merge definition is satisfied. Default behavior is DO NOT MERGE.
+NOTE: CONFIRMED SAFE merges require:
+1. XML capability confirmed (see XML specification)
+2. Identical action (SHOW/HIDE)
+3. Identical style (color, recolor, emphasized, sound, icon, beam)
+4. Compatible Order values (merged rule must preserve first-match-wins behavior)
+5. Lossless MatchSet preservation (union of original rules)
 
 ## Lossy Pruning Strategy
 
@@ -343,50 +359,66 @@ Tie-break must be deterministic and consistent across runs.
 
 ## Confirmed Last Epoch Semantics
 
-CONFIRMED 1: Rule evaluation order is top-to-bottom, first-match-wins
-Impact: Rule order is part of filter semantics; cannot freely reorder
-Source: Confirmed game behavior
+CONFIRMED 1: Rule evaluation order is determined by Order field, first-match-wins
+Impact: Rule order is part of filter semantics; Order field must be set correctly
+Source: Real XML shows Order element with integer values (0-9 observed)
+Detail: Lower Order value = higher priority; Order 0 evaluated first
 
 CONFIRMED 2: Earlier matching rule shadows later rules for that item
 Impact: Optimizer must preserve shadowing behavior when merging
 Source: Confirmed game behavior
 
 CONFIRMED 3: Affix conditions can contain multiple selected affixes with required-count
-Impact: Multiple affixes are NOT automatically AND-combined; required-count semantics apply
-Source: Confirmed advanced filter settings
+Impact: Multiple affixes are NOT automatically AND-combined; minOnTheSameItem specifies required count
+Source: Real XML shows affixes list with minOnTheSameItem field
+Detail: affixes=[A,B,C] with minOnTheSameItem=2 matches items with any 2 of those 3 affixes
 
-CONFIRMED 4: 140-rule limit is a hard constraint
-Impact: Optimizer must enforce this limit or fail explicitly
-Source: Project specification
+CONFIRMED 4: Rule budget is project policy (140 default), not game limit
+Impact: Optimizer enforces filter.max_rules (default 140); game maximum is 200
+Source: Project specification and config.yaml
+Detail: Approximately 60 rules reserved for manual user rules
+
+CONFIRMED 5: Multiple equipment types in one SubTypeCondition
+Impact: Can merge same-affix different-base Exalted rules
+Source: Real XML shows multiple EquipmentType elements in one SubTypeCondition
+Detail: Boolean OR semantics - item matches if it is ANY of the listed types
+
+CONFIRMED 6: Multiple unique IDs in one UniqueModifiersCondition
+Impact: Can merge different-unique same-action rules
+Source: Real XML shows three Uniques elements in single UniqueModifiersCondition
+Detail: Boolean OR semantics - item matches if it is ANY of the listed uniques
+
+CONFIRMED 7: Multiple idol sizes supported via multiple EquipmentType
+Impact: Can merge same-modifier different-size idol rules
+Source: Idol sizes represented as EquipmentType (IDOL_2x1, etc.); multiple allowed
+Detail: Boolean OR semantics
+
+CONFIRMED 8: Action and style fields must match for lossless merge
+Impact: Cannot merge SHOW with HIDE, or different colors/sounds
+Source: Real XML shows type, recolor, color, emphasized, SoundId, MapIconId, BeamOverride, etc.
+Detail: All style fields affect user experience and must be identical for merge
 
 ## Unconfirmed XML Serialization Details
 
-UNCONFIRMED 1: Can one XML rule match multiple itemType values (cross-base merging)?
-Impact: Affects Exalted CASE C (same affixes, different bases)
-Current assumption: UNKNOWN - do NOT merge until confirmed
+UNCONFIRMED 1: combinedComparsion and combinedComparsionValue exact semantics
+Impact: Likely related to total affix tier sum; need runtime verification
+Current assumption: Document field but treat as opaque for initial implementation
 
-UNCONFIRMED 2: Can one XML rule match multiple item types within same slot (cross-type merging)?
-Impact: Affects Exalted CASE D (same slot, different type/subType)
-Current assumption: UNKNOWN - do NOT merge until confirmed
+UNCONFIRMED 2: subTypes field in SubTypeCondition
+Impact: Present but empty in observed examples; purpose unknown
+Current assumption: Unused or deprecated; ignore for initial implementation
 
-UNCONFIRMED 3: Can one XML rule specify multiple unique IDs or names with OR semantics?
-Impact: Affects Unique CASE B (different uniques, same slot)
-Current assumption: UNKNOWN - do NOT merge until confirmed
+UNCONFIRMED 3: Exact runtime behavior of minOnTheSameItem with tier requirements
+Impact: Need in-game testing to confirm each matching affix meets individual tier requirement
+Current assumption: Each of minOnTheSameItem affixes must satisfy comparsionValue tier
 
-UNCONFIRMED 4: Can one idol rule match multiple idol sizes?
-Impact: Affects Idol CASE C (different size, same modifiers)
-Current assumption: UNKNOWN - do NOT merge until confirmed
+UNCONFIRMED 4: Roll value constraints in UniqueModifiersCondition
+Impact: MinRoll/MaxRoll structure clear but nil semantics uncertain
+Current assumption: nil means no constraint; non-nil values filter by modifier roll ranges
 
-UNCONFIRMED 5: How are affix tier requirements serialized in XML?
-Impact: Affects tier-relaxation merge implementation details
-Current assumption: MIN_TIER attribute exists, but structure unconfirmed
-
-UNCONFIRMED 6: How are selected_affixes and required_count serialized in XML?
-Impact: Affects whether partial affix overlap can be merged if all combinations are present
-Current assumption: Structure unconfirmed - do NOT merge partial overlaps
-
-UNCONFIRMED 7: Does XML support explicit priority/ordering attributes?
-Impact: Affects whether rule order must be preserved purely by XML position
+UNCONFIRMED 5: Maximum number of values per condition
+Impact: Unknown limits on EquipmentType count, affix count, Unique count
+Current assumption: No observed hard limits; implement reasonable maximums (e.g., 20)
 Current assumption: Order preserved by XML document position
 
 ## Proposed Production Algorithm
