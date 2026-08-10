@@ -460,7 +460,7 @@ class TestPriorityCalculator:
 
         candidate = ExaltedCandidate(
             base_key=("Gloves", 13, 0),
-            affixes=frozenset([("Speed", 6), (" Damage", 7)]),
+            affixes=frozenset([(None, "Speed", 6), (None, "Damage", 7)]),
             build_count=3,
             occurrence_count=5,
             sources={"corruption", "bossing"},

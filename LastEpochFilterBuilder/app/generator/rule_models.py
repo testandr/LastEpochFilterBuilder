@@ -13,9 +13,9 @@ class FilterRule:
     slot: Optional[str] = None
     item_type: Optional[int] = None
     sub_type: Optional[int] = None
-    affixes: FrozenSet[Tuple[str, int]] = field(default_factory=frozenset)
+    affixes: FrozenSet[Tuple[Optional[int], str, int]] = field(default_factory=frozenset)
     idol_size: Optional[str] = None
-    modifiers: FrozenSet[str] = field(default_factory=frozenset)
+    modifiers: FrozenSet[Tuple[Optional[int], str, int]] = field(default_factory=frozenset)
     unique_name: Optional[str] = None
     unique_id: Optional[int] = None
     max_tier: int = 0
@@ -53,9 +53,9 @@ class OptimizedRule:
     sources: Set[str] = field(default_factory=set)
     slot: Optional[str] = None
     item_types: List[Tuple[Optional[int], Optional[int]]] = field(default_factory=list)
-    affixes: FrozenSet[Tuple[str, int]] = field(default_factory=frozenset)
+    affixes: FrozenSet[Tuple[Optional[int], str, int]] = field(default_factory=frozenset)
     idol_sizes: List[str] = field(default_factory=list)
-    modifiers: FrozenSet[str] = field(default_factory=frozenset)
+    modifiers: FrozenSet[Tuple[Optional[int], str, int]] = field(default_factory=frozenset)
     unique_items: FrozenSet[Tuple[Optional[int], str]] = field(default_factory=frozenset)
     max_tier: int = 0
     avg_tier: float = 0.0

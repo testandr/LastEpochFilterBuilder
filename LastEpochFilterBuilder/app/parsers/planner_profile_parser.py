@@ -303,6 +303,7 @@ class PlannerProfileParser:
 
         return AffixDTO(
             name=affix_name,
+            affix_id=affix_id,
             tier=displayed_tier
         )
 
@@ -443,6 +444,7 @@ class PlannerProfileParser:
             name=name,
             size=size,
             modifiers=modifiers,
+            modifier_affixes=affixes,
             rarity=rarity
         )
 

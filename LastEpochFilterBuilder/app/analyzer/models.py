@@ -22,9 +22,9 @@ class ExaltedCandidate:
     # Technical base identity
     base_key: BaseKey  # (slot, itemType, subType)
 
-    # Affix requirements (name, min_tier)
+    # Affix requirements (affix_id, name, min_tier)
     # Frozen for hashability
-    affixes: FrozenSet[Tuple[str, int]]
+    affixes: FrozenSet[Tuple[Optional[int], str, int]]
 
     # Aggregation stats
     build_count: int = 0  # Number of unique builds using this combination
@@ -60,8 +60,8 @@ class IdolCandidate:
     # Idol identity
     size: Optional[str]  # e.g., "Grand Idol (1x3)"
 
-    # Full modifier combination (frozen for hashability)
-    modifiers: FrozenSet[str]
+    # Full modifier combination (affix_id, name, min_tier) - frozen for hashability
+    modifiers: FrozenSet[Tuple[Optional[int], str, int]]
 
     # Aggregation stats
     build_count: int = 0

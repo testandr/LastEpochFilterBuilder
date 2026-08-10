@@ -233,9 +233,9 @@ class BuildAnalyzer:
             sub_type = item.additional.get("subType") if item.additional else None
             base_key: BaseKey = (item.slot, item_type, sub_type)
 
-            # Build affix set (name, tier) - frozen for hashability
+            # Build affix set (affix_id, name, tier) - frozen for hashability
             affix_set = frozenset(
-                (affix.name, affix.tier or 0)
+                (affix.affix_id, affix.name, affix.tier or 0)
                 for affix in item.affixes
                 if affix.name and affix.tier
             )
@@ -265,7 +265,7 @@ class BuildAnalyzer:
             candidate.sources.update(sources)
 
             # Update tier tracking
-            for _, tier in affix_set:
+            for _, _, tier in affix_set:
                 candidate.max_tier = max(candidate.max_tier, tier)
                 candidate.tier_sum += tier
 
@@ -289,8 +289,19 @@ class BuildAnalyzer:
             is_first: True if first variant
         """
         for idol in idols:
-            # Build modifier set (frozen for hashability)
-            modifier_set = frozenset(idol.modifiers)
+            # Build modifier set (affix_id, name, tier) - frozen for hashability
+            # Backward compatibility: if modifier_affixes is empty, fallback to old string modifiers
+            if idol.modifier_affixes:
+                modifier_set = frozenset(
+                    (affix.affix_id, affix.name, affix.tier or 0)
+                    for affix in idol.modifier_affixes
+                    if affix.name and affix.tier
+                )
+            elif idol.modifiers:
+                # Fallback for old synthetic tests: parse display string "Name Tx" -> (None, Name, x)
+                modifier_set = frozenset((None, mod, 0) for mod in idol.modifiers)
+            else:
+                modifier_set = frozenset()
 
             if not modifier_set:
                 continue  # Skip empty idols
@@ -317,11 +328,11 @@ class BuildAnalyzer:
             candidate.sources.update(sources)
 
             # Track individual modifiers
-            for modifier in modifier_set:
-                if modifier not in modifier_stats_map:
-                    modifier_stats_map[modifier] = IndividualModifierStats(modifier=modifier)
+            for _, modifier_name, _ in modifier_set:
+                if modifier_name not in modifier_stats_map:
+                    modifier_stats_map[modifier_name] = IndividualModifierStats(modifier=modifier_name)
 
-                mod_stats = modifier_stats_map[modifier]
+                mod_stats = modifier_stats_map[modifier_name]
 
                 if is_first:
                     mod_stats.build_count += 1

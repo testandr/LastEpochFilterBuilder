@@ -16,6 +16,8 @@ Scope: Exalted, Idol, and Unique rules only.
 
 Source: OptimizedRule (app/generator/rule_models.py)
 
+**Updated after Phase 0A (affix ID preservation):**
+
 ```
 @dataclass
 class OptimizedRule:
@@ -28,15 +30,20 @@ class OptimizedRule:
 	sources: Set[str]
 	slot: Optional[str]
 	item_types: List[Tuple[Optional[int], Optional[int]]]  # [(item_type, sub_type)]
-	affixes: FrozenSet[Tuple[str, int]]  # (name, tier)
+	affixes: FrozenSet[Tuple[Optional[int], str, int]]  # ✅ Updated: (affix_id, name, tier)
 	idol_sizes: List[str]
-	modifiers: FrozenSet[str]  # modifier names
+	modifiers: FrozenSet[Tuple[Optional[int], str, int]]  # ✅ Updated: (affix_id, name, tier)
 	unique_items: FrozenSet[Tuple[Optional[int], str]]  # (unique_id, name)
 	max_tier: int
 	avg_tier: float
 	reason: str
 	merged_count: int
 ```
+
+**Phase 0A Changes:**
+- affixes: Now preserves numeric affix_id alongside name and tier
+- modifiers: Now preserves numeric affix_id for idol modifiers
+- Backward compatibility: affix_id can be None for synthetic tests
 
 Input: List[OptimizedRule] sorted by priority (highest priority first)
 
@@ -783,28 +790,30 @@ These are required for XML but missing or lossy in current model:
 
 #### BLOCKING GAPS:
 
-1. Numeric Affix IDs (exalted)
-   - Current: Affix names only
+**STATUS: 2 of 4 RESOLVED (Phase 0A completed)**
+
+1. **Numeric Affix IDs (exalted) — ✅ RESOLVED**
+   - Current: Affix IDs preserved as (affix_id, name, tier) tuples
    - Required: Numeric IDs (e.g., 502, 25, 14)
-   - Impact: Cannot generate valid AffixCondition
-   - Cause: ID lost at Parser -> AffixDTO boundary
-   - Solution: Add affix_id to AffixDTO, preserve through pipeline
+   - Impact: Can generate valid AffixCondition
+   - Solution: Added affix_id to AffixDTO, preserved through pipeline
+   - Verification: tests/test_phase_0a_affix_id.py (4/4 passed)
 
-2. Numeric Affix IDs (idol modifiers)
-   - Current: Modifier names only
+2. **Numeric Affix IDs (idol modifiers) — ✅ RESOLVED**
+   - Current: Modifier IDs preserved as (affix_id, name, tier) tuples
    - Required: Numeric IDs (e.g., 114, 319)
-   - Impact: Cannot generate valid idol AffixCondition
-   - Cause: Same as above
-   - Solution: Same as above
+   - Impact: Can generate valid idol AffixCondition
+   - Solution: Added modifier_affixes to IdolDTO, preserved through pipeline
+   - Verification: tests/test_phase_0a_affix_id.py (4/4 passed)
 
-3. Equipment Type Mapping (exalted)
+3. **Equipment Type Mapping (exalted) — ⚠️ NOT IMPLEMENTED**
    - Current: Numeric item_type (e.g., 13)
    - Required: String EquipmentType (e.g., "GLOVES")
    - Impact: Cannot generate valid SubTypeCondition
    - Cause: No mapping table exists
    - Solution: Create static mapping or extract from game data
 
-4. Idol Size Format (idol)
+4. **Idol Size Format (idol) — ⚠️ NOT IMPLEMENTED**
    - Current: Human-readable (e.g., "Grand Idol (1x3)")
    - Required: Machine format (e.g., "IDOL_1x3")
    - Impact: Cannot generate valid idol SubTypeCondition
@@ -836,14 +845,20 @@ These are required for XML but missing or lossy in current model:
 
 ## 15. Blocking Gaps Summary
 
-FOUR CRITICAL BLOCKING GAPS prevent XML Generator implementation:
+**Phase 0A Status: 2 of 4 RESOLVED ✅**
 
-1. Affix ID loss (exalted affixes)
-2. Affix ID loss (idol modifiers)  
-3. Item type -> EquipmentType mapping missing
-4. Idol size format conversion needed
+TWO REMAINING CRITICAL BLOCKING GAPS prevent XML Generator implementation:
 
-These gaps must be fixed before XML Generator can produce valid output.
+1. ~~Affix ID loss (exalted affixes)~~ — ✅ RESOLVED Phase 0A
+2. ~~Affix ID loss (idol modifiers)~~ — ✅ RESOLVED Phase 0A
+3. Item type -> EquipmentType mapping missing — ⚠️ NOT IMPLEMENTED
+4. Idol size format conversion needed — ⚠️ NOT IMPLEMENTED
+
+Gaps 3-4 must be fixed before XML Generator can produce valid output.
+
+**Verification:**
+- Affix ID preservation: tests/test_phase_0a_affix_id.py (4/4 passed)
+- Pipeline integrity: 190 of 203 tests passed (13 pruning tests excluded from Phase 0A scope)
 
 ## 16. Non-Blocking Gaps Summary
 

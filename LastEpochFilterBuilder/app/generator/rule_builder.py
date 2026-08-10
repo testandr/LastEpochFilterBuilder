@@ -24,7 +24,7 @@ class RuleBuilder:
 
     def _convert_exalted(self, c: ExaltedCandidate) -> FilterRule:
         slot, item_type, sub_type = c.base_key
-        affix_names = [n for n, t in sorted(c.affixes)]
+        affix_names = [n for aid, n, t in sorted(c.affixes)]
         reason = f"Exalted {slot} - {c.build_count} builds"
         return FilterRule(category="exalted", semantic_priority=c.semantic_priority, score=c.score,
             build_count=c.build_count, occurrence_count=c.occurrence_count, source_count=len(c.sources),

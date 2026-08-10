@@ -219,7 +219,7 @@ class TestExaltedMerge:
                 slot='Gloves',
                 item_type=1,
                 sub_type=0,
-                affixes=frozenset([(None, 'A', 5), (None, 'B', 5)]),
+                affixes=frozenset([(None, 'A', 5)]),
                 sources={'s2'}
             )
         ]

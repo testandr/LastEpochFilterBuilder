@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional
 @dataclass
 class AffixDTO:
     name: str
+    affix_id: Optional[int] = None
     category: Optional[str] = None
     tier: Optional[int] = None
     description: Optional[str] = None
@@ -34,6 +35,7 @@ class IdolDTO:
     name: str
     size: Optional[str] = None
     modifiers: List[str] = field(default_factory=list)
+    modifier_affixes: List[AffixDTO] = field(default_factory=list)
     rarity: Optional[str] = None
 
 

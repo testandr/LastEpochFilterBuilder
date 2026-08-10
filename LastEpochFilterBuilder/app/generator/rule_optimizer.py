@@ -281,7 +281,7 @@ class RuleOptimizer:
 
         # Build reason
         item_type_str = f"{len(all_item_types)} base variant(s)" if len(all_item_types) > 1 else "1 base"
-        affix_names = [name for name, tier in sorted(base.affixes)]
+        affix_names = [name for aid, name, tier in sorted(base.affixes)]
         reason = (
             f"Exalted {base.slot} with {len(base.affixes)} affix(es) "
             f"({', '.join(affix_names[:3])}{'...' if len(affix_names) > 3 else ''}) - "
@@ -378,7 +378,7 @@ class RuleOptimizer:
 
         # Build reason
         size_str = f"{len(all_sizes)} size variant(s)" if len(all_sizes) > 1 else (all_sizes[0] if all_sizes else "unknown size")
-        mod_list = sorted(base.modifiers)
+        mod_list = sorted([name for aid, name, tier in base.modifiers])
         reason = (
             f"Idol {size_str} with {len(base.modifiers)} modifier(s) "
             f"({', '.join(mod_list[:3])}{'...' if len(mod_list) > 3 else ''}) - "
