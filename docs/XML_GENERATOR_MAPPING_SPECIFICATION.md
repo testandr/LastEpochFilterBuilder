@@ -293,28 +293,37 @@ Each tuple is (item_type, sub_type)
 
 Output: Multiple EquipmentType XML elements
 
-CRITICAL MODEL GAP IDENTIFIED:
+**RESOLVED (Phase 0B1):**
 
-OptimizedRule.item_types contains numeric item_type IDs (e.g., 13).
+Mapper: app/generator/equipment_type_mapper.py
 
-XML requires string EquipmentType enums (e.g., "GLOVES").
+Function: map_equipment_type(item_type, sub_type=None) -> str
 
-Current codebase does NOT contain mapping: item_type integer -> EquipmentType string.
+Data source: game_data.json itemTypes array (confirmed from real extracted data)
 
-Examples from real XML:
-- GLOVES
-- HELMET
-- BOOTS
-- BODY_ARMOR
-- IDOL_2x1
-- IDOL_1x1
-- etc.
+Mapping table (confirmed core equipment slots):
 
-Parser has item_type numeric data but does NOT preserve string representation.
+| item_type | displayName | XML EquipmentType |
+|-----------|-------------|-------------------|
+| 0         | Helmet      | HELMET            |
+| 1         | Body Armor  | BODY_ARMOR        |
+| 2         | Belt        | BELT              |
+| 3         | Boots       | BOOTS             |
+| 4         | Gloves      | GLOVES            |
+| 20        | Amulet      | AMULET            |
+| 21        | Ring        | RING              |
+| 22        | Relic       | RELIC             |
 
-GAP: BLOCKING - Cannot generate correct EquipmentType without mapping.
+Behavior:
+- Confirmed types return XML enum string
+- Unknown types raise EquipmentTypeMappingError (explicit failure, no silent fallback)
+- Weapon types (5-16, 23-24) raise explicit out-of-scope error
+- Off-hand types (17-19) raise explicit out-of-scope error
+- Idol types (25-33) raise explicit out-of-scope error (handled in Phase 0B2)
 
-Recommended solution: Create static mapping table or lookup from game data.
+Status: RESOLVED for core equipment slots
+
+Remaining gaps: Weapon and Off-hand EquipmentType values require additional research.
 
 ### 7.2 SubType Handling
 
@@ -327,6 +336,10 @@ Research conclusion: subTypes always empty in observed real XML
 Current RuleOptimizer: Does NOT merge different sub_type values
 
 Decision for v1: Leave subTypes empty
+
+Equipment type mapper: sub_type parameter accepted but currently unused
+
+Phase 0B1 finding: sub_type does not affect EquipmentType selection for confirmed core equipment slots
 
 Consequence: Generated rules may be wider than original technical base filtering
 
@@ -790,30 +803,32 @@ These are required for XML but missing or lossy in current model:
 
 #### BLOCKING GAPS:
 
-**STATUS: 2 of 4 RESOLVED (Phase 0A completed)**
+**STATUS: 3 of 4 RESOLVED (Phase 0A completed, Phase 0B1 in progress)**
 
-1. **Numeric Affix IDs (exalted) — ✅ RESOLVED**
+1. **Numeric Affix IDs (exalted) — ✅ RESOLVED (Phase 0A)**
    - Current: Affix IDs preserved as (affix_id, name, tier) tuples
    - Required: Numeric IDs (e.g., 502, 25, 14)
    - Impact: Can generate valid AffixCondition
    - Solution: Added affix_id to AffixDTO, preserved through pipeline
    - Verification: tests/test_phase_0a_affix_id.py (4/4 passed)
 
-2. **Numeric Affix IDs (idol modifiers) — ✅ RESOLVED**
+2. **Numeric Affix IDs (idol modifiers) — ✅ RESOLVED (Phase 0A)**
    - Current: Modifier IDs preserved as (affix_id, name, tier) tuples
    - Required: Numeric IDs (e.g., 114, 319)
    - Impact: Can generate valid idol AffixCondition
    - Solution: Added modifier_affixes to IdolDTO, preserved through pipeline
    - Verification: tests/test_phase_0a_affix_id.py (4/4 passed)
 
-3. **Equipment Type Mapping (exalted) — ⚠️ NOT IMPLEMENTED**
-   - Current: Numeric item_type (e.g., 13)
-   - Required: String EquipmentType (e.g., "GLOVES")
-   - Impact: Cannot generate valid SubTypeCondition
-   - Cause: No mapping table exists
-   - Solution: Create static mapping or extract from game data
+3. **Equipment Type Mapping (exalted) — ✅ RESOLVED (Phase 0B1)**
+   - Current: Numeric item_type (e.g., 0, 1, 4) with mapper available
+   - Required: String EquipmentType (e.g., "HELMET", "BODY_ARMOR", "GLOVES")
+   - Impact: Can generate valid SubTypeCondition for core equipment
+   - Solution: Created app/generator/equipment_type_mapper.py with confirmed mappings
+   - Coverage: 8 core equipment slots (Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic)
+   - Verification: tests/test_equipment_type_mapper.py (31/31 passed)
+   - Remaining: Weapon/off-hand EquipmentType values require additional research
 
-4. **Idol Size Format (idol) — ⚠️ NOT IMPLEMENTED**
+4. **Idol Size Format (idol) — ⚠️ NOT IMPLEMENTED (Phase 0B2)**
    - Current: Human-readable (e.g., "Grand Idol (1x3)")
    - Required: Machine format (e.g., "IDOL_1x3")
    - Impact: Cannot generate valid idol SubTypeCondition
@@ -845,20 +860,25 @@ These are required for XML but missing or lossy in current model:
 
 ## 15. Blocking Gaps Summary
 
-**Phase 0A Status: 2 of 4 RESOLVED ✅**
+**Phase 0B1 Status: 3 of 4 RESOLVED ✅**
 
-TWO REMAINING CRITICAL BLOCKING GAPS prevent XML Generator implementation:
+ONE REMAINING CRITICAL BLOCKING GAP prevents complete XML Generator implementation:
 
 1. ~~Affix ID loss (exalted affixes)~~ — ✅ RESOLVED Phase 0A
 2. ~~Affix ID loss (idol modifiers)~~ — ✅ RESOLVED Phase 0A
-3. Item type -> EquipmentType mapping missing — ⚠️ NOT IMPLEMENTED
-4. Idol size format conversion needed — ⚠️ NOT IMPLEMENTED
+3. ~~Item type -> EquipmentType mapping missing~~ — ✅ RESOLVED Phase 0B1 (core equipment only)
+4. Idol size format conversion needed — ⚠️ NOT IMPLEMENTED (Phase 0B2)
 
-Gaps 3-4 must be fixed before XML Generator can produce valid output.
+Gap 4 must be fixed before XML Generator can produce valid idol rules.
+
+Exalted rules can now be generated with correct EquipmentType values for core equipment slots.
+
+Weapon and off-hand rules require additional EquipmentType research.
 
 **Verification:**
 - Affix ID preservation: tests/test_phase_0a_affix_id.py (4/4 passed)
-- Pipeline integrity: 190 of 203 tests passed (13 pruning tests excluded from Phase 0A scope)
+- EquipmentType mapping: tests/test_equipment_type_mapper.py (31/31 passed)
+- Core equipment coverage: Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic
 
 ## 16. Non-Blocking Gaps Summary
 
