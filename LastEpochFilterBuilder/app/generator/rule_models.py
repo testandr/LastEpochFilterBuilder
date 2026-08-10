@@ -56,12 +56,21 @@ class OptimizedRule:
     affixes: FrozenSet[Tuple[str, int]] = field(default_factory=frozenset)
     idol_sizes: List[str] = field(default_factory=list)
     modifiers: FrozenSet[str] = field(default_factory=frozenset)
-    unique_names: List[str] = field(default_factory=list)
-    unique_ids: List[Optional[int]] = field(default_factory=list)
+    unique_items: FrozenSet[Tuple[Optional[int], str]] = field(default_factory=frozenset)
     max_tier: int = 0
     avg_tier: float = 0.0
     reason: str = ''
     merged_count: int = 1
+
+    @property
+    def unique_ids(self) -> List[Optional[int]]:
+        """Derived property for backward compatibility."""
+        return [uid for uid, _ in sorted(self.unique_items)]
+
+    @property
+    def unique_names(self) -> List[str]:
+        """Derived property for backward compatibility."""
+        return [name for _, name in sorted(self.unique_items)]
 
 @dataclass
 class OptimizationResult:

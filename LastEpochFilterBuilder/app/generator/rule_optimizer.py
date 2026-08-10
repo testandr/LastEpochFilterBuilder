@@ -8,21 +8,23 @@ RuleOptimizer Part 3A: Lossless merge only
 
 Merge policy:
 - Exact duplicate merge for all categories
-- Exalted: merge same affixes + different item types (cross-base)
-- Unique: merge different unique IDs
+- Exalted: merge same affixes + same slot + different confirmed item_types ONLY
+  (sub_type differences NOT merged until semantics confirmed)
+- Unique: merge different unique IDs (preserving ID<->name pairing)
 - Idol: merge same modifiers + different sizes
 - Does NOT merge partial affix overlap
 - Does NOT perform tier relaxation
 
 Score policy:
-- Use max(component scores) when exact recalculation is not possible
-- Documented as deterministic fallback
+- Use max(component scores) - exact recalculation not possible without Analyzer formula
+- Documented as conservative deterministic fallback
 
 Statistics policy:
 - sources = union of all component sources
 - source_count = len(sources)
-- occurrence_count = sum (only when semantically correct)
-- build_count = sum (acknowledges potential double-counting)
+- occurrence_count = max(component occurrence_count) - conservative, avoids potential double-count
+- build_count = max(component build_count) - conservative until build identities available
+  (sum would risk double-counting same build appearing in multiple merged rules)
 
 Ordering policy:
 - semantic_priority DESC
@@ -30,7 +32,7 @@ Ordering policy:
 - stable identity ASC (no hash())
 """
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, FrozenSet, List, Tuple
 from app.generator.rule_models import FilterRule, RuleBuildResult, OptimizedRule, OptimizationResult
 
 logger = logging.getLogger(__name__)
@@ -93,8 +95,11 @@ class RuleOptimizer:
         """
         item_types = [(rule.item_type, rule.sub_type)] if rule.item_type is not None else []
         idol_sizes = [rule.idol_size] if rule.idol_size else []
-        unique_names = [rule.unique_name] if rule.unique_name else []
-        unique_ids = [rule.unique_id] if rule.unique_id is not None else []
+
+        # Store unique ID<->name as immutable pair to preserve mapping
+        unique_items = frozenset()
+        if rule.unique_id is not None or rule.unique_name:
+            unique_items = frozenset([(rule.unique_id, rule.unique_name or '')])
 
         return OptimizedRule(
             category=rule.category,
@@ -109,8 +114,7 @@ class RuleOptimizer:
             affixes=rule.affixes,
             idol_sizes=idol_sizes,
             modifiers=rule.modifiers,
-            unique_names=unique_names,
-            unique_ids=unique_ids,
+            unique_items=unique_items,
             max_tier=rule.max_tier,
             avg_tier=rule.avg_tier,
             reason=rule.reason,
@@ -121,8 +125,9 @@ class RuleOptimizer:
         """Merge Exalted rules.
 
         Merge policy:
-        - Exact duplicates: same affixes + same item_types
-        - Cross-base: same affixes + different item_types
+        - Exact duplicates: same slot + same affixes + same item_types
+        - Cross-base: same slot + same affixes + different CONFIRMED item_types
+        - Does NOT merge different sub_type until subType semantics confirmed
         - Does NOT merge partial affix overlap
         - Does NOT perform tier relaxation
 
@@ -135,31 +140,61 @@ class RuleOptimizer:
         if not rules:
             return [], 0
 
-        # Group by affixes (key for merge candidates)
-        affix_groups: Dict[FrozenSet, List[OptimizedRule]] = {}
+        # Group by (slot, affixes) for merge candidates
+        merge_groups: Dict[Tuple[str, FrozenSet], List[OptimizedRule]] = {}
         for rule in rules:
-            affix_groups.setdefault(rule.affixes, []).append(rule)
+            key = (rule.slot or '', rule.affixes)
+            merge_groups.setdefault(key, []).append(rule)
 
         merged_rules = []
         merge_count = 0
 
-        for affixes, group in affix_groups.items():
+        for key, group in merge_groups.items():
             if len(group) == 1:
                 # No merge needed
                 merged_rules.append(group[0])
             else:
-                # Merge group into single rule
-                merged = self._merge_exalted_group(group)
-                merged_rules.append(merged)
-                merge_count += len(group) - 1
+                # Check if merge is safe: can only merge if item_type differs
+                # but sub_type is same (or we have confirmed EquipmentType coverage)
+                sub_groups = self._split_exalted_by_merge_safety(group)
+                for sub_group in sub_groups:
+                    if len(sub_group) == 1:
+                        merged_rules.append(sub_group[0])
+                    else:
+                        merged = self._merge_exalted_group(sub_group)
+                        merged_rules.append(merged)
+                        merge_count += len(sub_group) - 1
 
         return merged_rules, merge_count
 
-    def _merge_exalted_group(self, group: List[OptimizedRule]) -> OptimizedRule:
-        """Merge a group of Exalted rules with same affixes.
+    def _split_exalted_by_merge_safety(self, group: List[OptimizedRule]) -> List[List[OptimizedRule]]:
+        """Split exalted group into mergeable sub-groups.
+
+        Only merge rules where differences can be represented via confirmed EquipmentType.
+        Do NOT merge rules with different sub_type until subType semantics confirmed.
 
         Args:
-            group: List of OptimizedRules with identical affixes
+            group: List of rules with same slot and affixes
+
+        Returns:
+            List of sub-groups that can be safely merged
+        """
+        # Group by sub_type - only merge within same sub_type group
+        # (different item_type with same sub_type can merge via multiple EquipmentType)
+        sub_type_groups: Dict[Tuple, List[OptimizedRule]] = {}
+
+        for rule in group:
+            # Extract all sub_types from item_types list
+            sub_types = frozenset(sub_type for _, sub_type in rule.item_types)
+            sub_type_groups.setdefault(sub_types, []).append(rule)
+
+        return list(sub_type_groups.values())
+
+    def _merge_exalted_group(self, group: List[OptimizedRule]) -> OptimizedRule:
+        """Merge a group of Exalted rules with same slot and affixes.
+
+        Args:
+            group: List of OptimizedRules with identical slot and affixes
 
         Returns:
             Single merged OptimizedRule
@@ -167,10 +202,10 @@ class RuleOptimizer:
         # Use first rule as base
         base = group[0]
 
-        # Aggregate statistics
+        # Aggregate statistics - use CONSERVATIVE policies
         all_sources = set()
-        total_build_count = 0
-        total_occurrence_count = 0
+        max_build_count = base.build_count
+        max_occurrence_count = base.occurrence_count
         max_score = base.score
         all_item_types = []
         merged_count = 0
@@ -179,8 +214,9 @@ class RuleOptimizer:
 
         for rule in group:
             all_sources.update(rule.sources)
-            total_build_count += rule.build_count
-            total_occurrence_count += rule.occurrence_count
+            # Conservative: use max to avoid double-counting builds
+            max_build_count = max(max_build_count, rule.build_count)
+            max_occurrence_count = max(max_occurrence_count, rule.occurrence_count)
             max_score = max(max_score, rule.score)
             all_item_types.extend(rule.item_types)
             merged_count += rule.merged_count
@@ -196,15 +232,16 @@ class RuleOptimizer:
             f"Exalted {base.slot} with {len(base.affixes)} affix(es) "
             f"({', '.join(affix_names[:3])}{'...' if len(affix_names) > 3 else ''}) - "
             f"{item_type_str}, merged from {merged_count} rule(s), "
-            f"used by {total_build_count} build(s) across {len(all_sources)} source(s)"
+            f"build_count={max_build_count} (max, conservative), "
+            f"sources={len(all_sources)}"
         )
 
         return OptimizedRule(
             category=base.category,
             semantic_priority=base.semantic_priority,
             score=max_score,
-            build_count=total_build_count,
-            occurrence_count=total_occurrence_count,
+            build_count=max_build_count,
+            occurrence_count=max_occurrence_count,
             source_count=len(all_sources),
             sources=all_sources,
             slot=base.slot,
@@ -212,8 +249,7 @@ class RuleOptimizer:
             affixes=base.affixes,
             idol_sizes=[],
             modifiers=frozenset(),
-            unique_names=[],
-            unique_ids=[],
+            unique_items=frozenset(),
             max_tier=max_max_tier,
             avg_tier=avg_avg_tier,
             reason=reason,
@@ -269,18 +305,19 @@ class RuleOptimizer:
         # Use first rule as base
         base = group[0]
 
-        # Aggregate statistics
+        # Aggregate statistics - use CONSERVATIVE policies
         all_sources = set()
-        total_build_count = 0
-        total_occurrence_count = 0
+        max_build_count = base.build_count
+        max_occurrence_count = base.occurrence_count
         max_score = base.score
         all_sizes = []
         merged_count = 0
 
         for rule in group:
             all_sources.update(rule.sources)
-            total_build_count += rule.build_count
-            total_occurrence_count += rule.occurrence_count
+            # Conservative: use max to avoid double-counting builds
+            max_build_count = max(max_build_count, rule.build_count)
+            max_occurrence_count = max(max_occurrence_count, rule.occurrence_count)
             max_score = max(max_score, rule.score)
             all_sizes.extend(rule.idol_sizes)
             merged_count += rule.merged_count
@@ -292,15 +329,16 @@ class RuleOptimizer:
             f"Idol {size_str} with {len(base.modifiers)} modifier(s) "
             f"({', '.join(mod_list[:3])}{'...' if len(mod_list) > 3 else ''}) - "
             f"merged from {merged_count} rule(s), "
-            f"used by {total_build_count} build(s) across {len(all_sources)} source(s)"
+            f"build_count={max_build_count} (max, conservative), "
+            f"sources={len(all_sources)}"
         )
 
         return OptimizedRule(
             category=base.category,
             semantic_priority=base.semantic_priority,
             score=max_score,
-            build_count=total_build_count,
-            occurrence_count=total_occurrence_count,
+            build_count=max_build_count,
+            occurrence_count=max_occurrence_count,
             source_count=len(all_sources),
             sources=all_sources,
             slot=None,
@@ -308,8 +346,7 @@ class RuleOptimizer:
             affixes=frozenset(),
             idol_sizes=all_sizes,
             modifiers=base.modifiers,
-            unique_names=[],
-            unique_ids=[],
+            unique_items=frozenset(),
             max_tier=0,
             avg_tier=0.0,
             reason=reason,
@@ -352,38 +389,40 @@ class RuleOptimizer:
         # Use first rule as base
         base = group[0]
 
-        # Aggregate statistics
+        # Aggregate statistics - use CONSERVATIVE policies
         all_sources = set()
-        total_build_count = 0
-        total_occurrence_count = 0
+        max_build_count = base.build_count
+        max_occurrence_count = base.occurrence_count
         max_score = base.score
-        all_names = []
-        all_ids = []
+        all_unique_items = set()
         merged_count = 0
 
         for rule in group:
             all_sources.update(rule.sources)
-            total_build_count += rule.build_count
-            total_occurrence_count += rule.occurrence_count
+            # Conservative: use max to avoid double-counting builds
+            max_build_count = max(max_build_count, rule.build_count)
+            max_occurrence_count = max(max_occurrence_count, rule.occurrence_count)
             max_score = max(max_score, rule.score)
-            all_names.extend(rule.unique_names)
-            all_ids.extend(rule.unique_ids)
+            all_unique_items.update(rule.unique_items)
             merged_count += rule.merged_count
 
         # Build reason
-        name_str = f"{len(all_names)} unique item(s)" if len(all_names) > 1 else (all_names[0] if all_names else "unknown")
+        name_str = f"{len(all_unique_items)} unique item(s)" if len(all_unique_items) > 1 else (
+            list(all_unique_items)[0][1] if all_unique_items else "unknown"
+        )
         reason = (
             f"Unique {name_str} - "
             f"merged from {merged_count} rule(s), "
-            f"used by {total_build_count} build(s) across {len(all_sources)} source(s)"
+            f"build_count={max_build_count} (max, conservative), "
+            f"sources={len(all_sources)}"
         )
 
         return OptimizedRule(
             category=base.category,
             semantic_priority=base.semantic_priority,
             score=max_score,
-            build_count=total_build_count,
-            occurrence_count=total_occurrence_count,
+            build_count=max_build_count,
+            occurrence_count=max_occurrence_count,
             source_count=len(all_sources),
             sources=all_sources,
             slot=base.slot,
@@ -391,8 +430,7 @@ class RuleOptimizer:
             affixes=frozenset(),
             idol_sizes=[],
             modifiers=frozenset(),
-            unique_names=all_names,
-            unique_ids=all_ids,
+            unique_items=frozenset(all_unique_items),
             max_tier=0,
             avg_tier=0.0,
             reason=reason,
@@ -428,10 +466,10 @@ class RuleOptimizer:
                 tuple(sorted(rule.modifiers))
             )
         elif rule.category == 'unique':
+            # Use unique_items directly for stable sorting (preserves ID<->name pairing)
             identity = (
                 rule.category,
-                tuple(sorted(rule.unique_names)),
-                tuple(sorted(rule.unique_ids, key=lambda x: x if x is not None else -1))
+                tuple(sorted(rule.unique_items))
             )
         else:
             identity = (rule.category,)

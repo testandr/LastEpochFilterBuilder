@@ -109,6 +109,7 @@ class TestExaltedMerge:
                 semantic_priority=100,
                 score=70.0,
                 build_count=2,
+                occurrence_count=5,
                 slot='Helmet',
                 item_type=1,
                 sub_type=0,
@@ -120,6 +121,7 @@ class TestExaltedMerge:
                 semantic_priority=100,
                 score=80.0,
                 build_count=3,
+                occurrence_count=7,
                 slot='Helmet',
                 item_type=1,
                 sub_type=0,
@@ -133,11 +135,12 @@ class TestExaltedMerge:
         assert result.exalted_merged == 1
         opt = result.rules[0]
         assert opt.score == 80.0  # max
-        assert opt.build_count == 5
+        assert opt.build_count == 3  # max (conservative, not sum)
+        assert opt.occurrence_count == 7  # max (conservative)
         assert opt.sources == {'s1', 's2'}
 
     def test_cross_base_exalted_merged(self):
-        """Exalted rules with same affixes but different item types should merge."""
+        """Exalted rules with same slot, same affixes, same sub_type but different item types should merge."""
         rules = [
             FilterRule(
                 category='exalted',
@@ -581,3 +584,268 @@ class TestMixedCategories:
         assert result.exalted_merged == 1
         assert result.idol_merged == 1
         assert result.unique_merged == 1
+
+
+class TestConservativeStatistics:
+    """Test conservative build_count and occurrence_count policies."""
+
+    def test_build_count_uses_max_not_sum(self):
+        """Merged build_count should use max (conservative) to avoid double-counting."""
+        rules = [
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                build_count=10,
+                slot='Helmet',
+                item_type=1,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                build_count=15,
+                slot='Helmet',
+                item_type=1,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s2'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        opt = result.rules[0]
+        # Should be max(10, 15) = 15, NOT 25 (sum would double-count)
+        assert opt.build_count == 15
+
+    def test_occurrence_count_uses_max(self):
+        """Merged occurrence_count should use max (conservative)."""
+        rules = [
+            FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=50.0,
+                occurrence_count=20,
+                idol_size='Grand',
+                modifiers=frozenset(['M1']),
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=50.0,
+                occurrence_count=25,
+                idol_size='Small',
+                modifiers=frozenset(['M1']),
+                sources={'s2'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        opt = result.rules[0]
+        # Should be max(20, 25) = 25, conservative approach
+        assert opt.occurrence_count == 25
+
+
+class TestCrossBaseCorrectness:
+    """Test corrected cross-base merge logic."""
+
+    def test_same_item_type_different_sub_type_not_merged(self):
+        """Rules with same item_type but different sub_type should NOT merge until subType semantics confirmed."""
+        rules = [
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                slot='Helmet',
+                item_type=1,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                slot='Helmet',
+                item_type=1,
+                sub_type=1,  # Different sub_type
+                affixes=frozenset([('A', 5)]),
+                sources={'s2'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        # Should NOT merge - sub_type semantics not confirmed
+        assert result.optimized_count == 2
+        assert result.exalted_merged == 0
+
+    def test_different_confirmed_item_types_can_merge(self):
+        """Rules with different confirmed item_types (same sub_type) CAN merge."""
+        rules = [
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                slot='Helmet',
+                item_type=1,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                slot='Helmet',
+                item_type=2,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s2'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        # CAN merge - different item_type, same sub_type, confirmed via EquipmentType
+        assert result.optimized_count == 1
+        assert result.exalted_merged == 1
+
+    def test_different_slot_not_merged(self):
+        """Rules with different slots should NOT merge even with same affixes."""
+        rules = [
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                slot='Helmet',
+                item_type=1,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                slot='Body Armour',  # Different slot
+                item_type=1,
+                sub_type=0,
+                affixes=frozenset([('A', 5)]),
+                sources={'s2'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        # Should NOT merge - different slots
+        assert result.optimized_count == 2
+        assert result.exalted_merged == 0
+
+
+class TestUniqueIdNamePairing:
+    """Test that unique ID<->name pairing is preserved."""
+
+    def test_unique_id_name_pairing_preserved_in_merge(self):
+        """Unique ID<->name pairs should be preserved after merge."""
+        rules = [
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                unique_name='ItemA',
+                unique_id=100,
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                unique_name='ItemB',
+                unique_id=200,
+                sources={'s2'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        opt = result.rules[0]
+
+        # Check pairing is preserved
+        assert (100, 'ItemA') in opt.unique_items
+        assert (200, 'ItemB') in opt.unique_items
+
+        # Backward compatibility properties
+        assert 100 in opt.unique_ids
+        assert 200 in opt.unique_ids
+        assert 'ItemA' in opt.unique_names
+        assert 'ItemB' in opt.unique_names
+
+    def test_unique_id_name_pairing_survives_sorting(self):
+        """Unique ID<->name pairs should survive deterministic sorting."""
+        rules = [
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                unique_name='Zebra',
+                unique_id=300,
+                sources={'s1'}
+            ),
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=60.0,
+                unique_name='Apple',
+                unique_id=100,
+                sources={'s2'}
+            ),
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=55.0,
+                unique_name='Banana',
+                unique_id=200,
+                sources={'s3'}
+            )
+        ]
+        result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
+        opt = result.rules[0]
+
+        # All pairs should be preserved
+        assert (100, 'Apple') in opt.unique_items
+        assert (200, 'Banana') in opt.unique_items
+        assert (300, 'Zebra') in opt.unique_items
+
+        # Score should be max
+        assert opt.score == 60.0
+
+
+class TestInputImmutability:
+    """Test that input is not mutated during optimization."""
+
+    def test_input_remains_unchanged_after_merge(self):
+        """Original input should not be modified by optimizer."""
+        original_sources = {'original_source'}
+        rule = FilterRule(
+            category='exalted',
+            semantic_priority=100,
+            score=50.0,
+            build_count=5,
+            occurrence_count=10,
+            slot='Helmet',
+            item_type=1,
+            sub_type=0,
+            affixes=frozenset([('A', 5)]),
+            sources=original_sources.copy()
+        )
+        input_result = RuleBuildResult(rules=[rule])
+
+        # Store original values
+        original_build_count = rule.build_count
+        original_occurrence = rule.occurrence_count
+
+        # Optimize
+        result = RuleOptimizer().optimize(input_result)
+
+        # Mutate output
+        result.rules[0].sources.add('new_source')
+
+        # Original should be unchanged
+        assert rule.sources == original_sources
+        assert rule.build_count == original_build_count
+        assert rule.occurrence_count == original_occurrence
