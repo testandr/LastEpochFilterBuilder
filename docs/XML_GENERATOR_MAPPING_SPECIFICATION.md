@@ -529,30 +529,36 @@ Source: OptimizedRule.idol_sizes: List[str]
 
 Examples: "Grand Idol (1x3)", "Minor Idol (1x1)"
 
-XML requires EquipmentType format: "IDOL_2x1", "IDOL_1x1", etc.
+XML requires EquipmentType format: "IDOL_1x3", "IDOL_1x1", etc.
 
-CRITICAL MODEL GAP IDENTIFIED:
+**RESOLVED (Phase 0B2):**
 
-OptimizedRule.idol_sizes contains human-readable strings like "Grand Idol (1x3)".
+Mapper: app/generator/idol_size_mapper.py
 
-XML requires machine-readable format like "IDOL_1x3".
+Functions:
+- map_idol_size(size: str) -> str
+- map_idol_item_type(item_type: int) -> str
 
-Mapping needed:
-- "Minor Idol (1x1)" -> "IDOL_1x1"
-- "Small Idol (1x2)" -> "IDOL_1x2"
-- "Grand Idol (2x1)" -> "IDOL_2x1"
-- "Adorned Idol (1x3)" -> "IDOL_1x3"
-- "Large Idol (2x2)" -> "IDOL_2x2"
-- "Huge Idol (1x4)" -> "IDOL_1x4"
+Data source: Parser IDOL_SIZES constant (item_type -> human-readable size string)
 
-Parser extracts size from planner data, stores human-readable format.
+Mapping approach: Extract dimensions from (WxH) pattern in size string, format as IDOL_WxH
 
-GAP: BLOCKING - Cannot generate correct idol EquipmentType without parsing size dimensions.
+Confirmed mappings:
+- "Minor Idol (1x1)" -> IDOL_1x1 (item_type 26)
+- "Humble Idol (1x2)" -> IDOL_1x2 (item_type 27)
+- "Grand Idol (1x3)" -> IDOL_1x3 (item_type 29)
+- "Adorned Idol (1x4)" -> IDOL_1x4 (item_type 33)
 
-Recommended solution:
-- Parse dimensions from idol_size string (regex: r'\((\d+)x(\d+)\)')
-- Format as "IDOL_{width}x{height}"
-- Alternative: Store machine-readable format from Parser stage
+Note: Parser IDOL_SIZES maps only 4 idol types. Game_data contains 10 idol types (25-33, 41), but only 4 have confirmed dimension mappings in parser.
+
+Behavior:
+- Extracts dimensions using regex pattern: r'\\((\\d+)x(\\d+)\\)'
+- Formats as IDOL_WxH where W=width, H=height
+- Unknown or malformed sizes raise IdolSizeMappingError (explicit failure)
+- No fallback to generic values
+- No fuzzy matching on idol names
+
+Status: RESOLVED for all parser-supported idol sizes
 
 ### 9.2 Idol Modifier Mapping
 
@@ -803,7 +809,7 @@ These are required for XML but missing or lossy in current model:
 
 #### BLOCKING GAPS:
 
-**STATUS: 3 of 4 RESOLVED (Phase 0A completed, Phase 0B1 in progress)**
+**STATUS: 4 of 4 CORE GAPS RESOLVED (Phase 0A, 0B1, 0B2 completed)**
 
 1. **Numeric Affix IDs (exalted) — ✅ RESOLVED (Phase 0A)**
    - Current: Affix IDs preserved as (affix_id, name, tier) tuples
@@ -826,14 +832,16 @@ These are required for XML but missing or lossy in current model:
    - Solution: Created app/generator/equipment_type_mapper.py with confirmed mappings
    - Coverage: 8 core equipment slots (Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic)
    - Verification: tests/test_equipment_type_mapper.py (31/31 passed)
-   - Remaining: Weapon/off-hand EquipmentType values require additional research
+   - Remaining: Weapon/off-hand EquipmentType values require additional research (Phase 0B3)
 
-4. **Idol Size Format (idol) — ⚠️ NOT IMPLEMENTED (Phase 0B2)**
-   - Current: Human-readable (e.g., "Grand Idol (1x3)")
+4. **Idol Size Format (idol) — ✅ RESOLVED (Phase 0B2)**
+   - Current: Human-readable with mapper available (e.g., "Grand Idol (1x3)")
    - Required: Machine format (e.g., "IDOL_1x3")
-   - Impact: Cannot generate valid idol SubTypeCondition
-   - Cause: Parser stores display name
-   - Solution: Parse dimensions from current format or store machine format
+   - Impact: Can generate valid idol SubTypeCondition
+   - Solution: Created app/generator/idol_size_mapper.py with dimension extraction
+   - Coverage: 4 parser-supported idol sizes (Minor 1x1, Humble 1x2, Grand 1x3, Adorned 1x4)
+   - Verification: tests/test_idol_size_mapper.py (35/35 passed)
+   - Note: Parser only maps 4 of 10 idol types; additional idol dimensions unknown
 
 #### NON-BLOCKING GAPS:
 
@@ -860,25 +868,33 @@ These are required for XML but missing or lossy in current model:
 
 ## 15. Blocking Gaps Summary
 
-**Phase 0B1 Status: 3 of 4 RESOLVED ✅**
+**Phase 0B2 Status: 4 of 4 CORE GAPS RESOLVED ✅**
 
-ONE REMAINING CRITICAL BLOCKING GAP prevents complete XML Generator implementation:
+ALL CORE BLOCKING GAPS RESOLVED for currently supported equipment/idol types:
 
 1. ~~Affix ID loss (exalted affixes)~~ — ✅ RESOLVED Phase 0A
 2. ~~Affix ID loss (idol modifiers)~~ — ✅ RESOLVED Phase 0A
-3. ~~Item type -> EquipmentType mapping missing~~ — ✅ RESOLVED Phase 0B1 (core equipment only)
-4. Idol size format conversion needed — ⚠️ NOT IMPLEMENTED (Phase 0B2)
+3. ~~Item type -> EquipmentType mapping missing~~ — ✅ RESOLVED Phase 0B1 (core equipment)
+4. ~~Idol size format conversion needed~~ — ✅ RESOLVED Phase 0B2 (parser-supported idols)
 
-Gap 4 must be fixed before XML Generator can produce valid idol rules.
+XML Generator can now produce valid rules for:
+- Exalted items: Core equipment slots (Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic)
+- Idol items: Parser-supported sizes (Minor 1x1, Humble 1x2, Grand 1x3, Adorned 1x4)
+- Unique items: All unique IDs (no equipment type filtering needed)
 
-Exalted rules can now be generated with correct EquipmentType values for core equipment slots.
+**REMAINING GAPS (non-blocking for current project scope):**
 
-Weapon and off-hand rules require additional EquipmentType research.
+- Weapon EquipmentType mapping (Phase 0B3 recommended before production)
+- Off-hand EquipmentType mapping (Phase 0B3 recommended before production)
+- Additional idol sizes (25, 28, 30, 31, 32, 41) not mapped by parser
+
+Weapon and off-hand exalted rules cannot be generated until Phase 0B3 research completes.
 
 **Verification:**
 - Affix ID preservation: tests/test_phase_0a_affix_id.py (4/4 passed)
 - EquipmentType mapping: tests/test_equipment_type_mapper.py (31/31 passed)
-- Core equipment coverage: Helmet, Body Armor, Belt, Boots, Gloves, Amulet, Ring, Relic
+- IdolSize mapping: tests/test_idol_size_mapper.py (35/35 passed)
+- Total test coverage: 232 passed, 1 skipped, 0 failed
 
 ## 16. Non-Blocking Gaps Summary
 
