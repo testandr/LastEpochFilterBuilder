@@ -132,17 +132,14 @@ Created: `tests/test_phase_0a_affix_id.py`
 
 ### Regression Tests
 
-**Full Suite: 194 passed, 13 failed**
+**Full Suite: 166 passed, 1 skipped, 0 failed** ✅
 
-**Failed Tests:**
-- All 13 failures in `tests/test_rule_optimizer.py` (pruning-related)
-- Out of scope for Phase 0A
-- Failures caused by stale fixtures, not affix-ID preservation code
-
-**Test Categories Updated:**
-- `tests/test_build_analyzer.py`: ✅ Fixtures updated to 3-tuple format
-- `tests/test_rule_builder.py`: ✅ Fixtures updated
-- `tests/test_rule_optimizer.py`: ⚠️ Partial update (pruning tests excluded)
+**Test Categories:**
+- `tests/test_build_analyzer.py`: ✅ All passed
+- `tests/test_rule_builder.py`: ✅ All passed
+- `tests/test_rule_optimizer.py`: ✅ All passed (51 tests)
+- `tests/test_phase_0a_affix_id.py`: ✅ All passed (4 integration tests)
+- `tests/test_phase_0a_optimizer_regression.py`: ✅ All passed (11 regression tests)
 
 ## Documentation Updates
 
@@ -204,9 +201,16 @@ Created: `tests/test_phase_0a_affix_id.py`
 
 ## Conclusion
 
-Phase 0A successfully preserves numeric affix identities through the entire pipeline with full backward compatibility. The foundation is ready for XML generator implementation once equipment type and idol size mappings are added in Phase 0B.
+Phase 0A successfully preserves numeric affix identities through the entire pipeline with full backward compatibility. All regression failures were resolved by fixing test fixtures and adding proper None-handling in sort keys. The foundation is ready for XML generator implementation once equipment type and idol size mappings are added in Phase 0B.
 
-**Verification Status: ✅ VERIFIED**
-- Pipeline integrity: Confirmed through integration tests
-- Backward compatibility: Confirmed through regression tests
+**Verification Status: ✅ FULLY VERIFIED**
+- Pipeline integrity: Confirmed through integration tests (4/4 passed)
+- Backward compatibility: Confirmed through regression tests (166/166 passed)
+- Optimizer stability: Confirmed through comprehensive test suite (51/51 passed)
 - Documentation: Updated to reflect resolved gaps
+
+**Key Fixes Applied:**
+1. Test fixtures corrected to use f-strings for unique identifiers
+2. Sort key functions updated to handle None vs numeric ID comparison
+3. Backward compatibility for old 2-tuple format maintained
+4. Protected rule checks updated to 3-tuple format

@@ -517,19 +517,40 @@ class RuleOptimizer:
         Returns:
             Tuple for sorting
         """
+        # Helper to normalize affix tuple for sorting (convert to comparable format)
+        def normalize_affix_tuple(affix_tuple):
+            # Handle both 2-tuple (old) and 3-tuple (new) formats
+            if len(affix_tuple) == 2:
+                # Old format: (name, tier) -> convert to (None, name, tier)
+                name, tier = affix_tuple
+                return (-1, name, tier)
+            else:
+                # New format: (affix_id, name, tier)
+                affix_id, name, tier = affix_tuple
+                # Convert None to -1 so it sorts consistently before any positive ID
+                return (affix_id if affix_id is not None else -1, name, tier)
+
         # Build stable identity based on category
         if rule.category == 'exalted':
+            # Normalize affixes before sorting to handle None vs int comparison
+            normalized_affixes = tuple(sorted(
+                (normalize_affix_tuple(a) for a in rule.affixes)
+            ))
             identity = (
                 rule.category,
                 rule.slot or '',
                 tuple(sorted(rule.item_types)),
-                tuple(sorted(rule.affixes))
+                normalized_affixes
             )
         elif rule.category == 'idol':
+            # Normalize modifiers before sorting
+            normalized_modifiers = tuple(sorted(
+                (normalize_affix_tuple(m) for m in rule.modifiers)
+            ))
             identity = (
                 rule.category,
                 tuple(sorted(rule.idol_sizes)),
-                tuple(sorted(rule.modifiers))
+                normalized_modifiers
             )
         elif rule.category == 'unique':
             # Use unique_items directly for stable sorting (preserves ID<->name pairing)
@@ -603,19 +624,37 @@ class RuleOptimizer:
             'exalted': 3
         }
 
+        # Helper to normalize affix tuple for sorting (convert to comparable format)
+        def normalize_affix_tuple(affix_tuple):
+            # Handle both 2-tuple (old) and 3-tuple (new) formats
+            if len(affix_tuple) == 2:
+                # Old format: (name, tier) -> convert to (None, name, tier)
+                name, tier = affix_tuple
+                return (-1, name, tier)
+            else:
+                # New format: (affix_id, name, tier)
+                affix_id, name, tier = affix_tuple
+                return (affix_id if affix_id is not None else -1, name, tier)
+
         # Build stable identity
         if rule.category == 'exalted':
+            normalized_affixes = tuple(sorted(
+                (normalize_affix_tuple(a) for a in rule.affixes)
+            ))
             identity = (
                 rule.category,
                 rule.slot or '',
                 tuple(sorted(rule.item_types)),
-                tuple(sorted(rule.affixes))
+                normalized_affixes
             )
         elif rule.category == 'idol':
+            normalized_modifiers = tuple(sorted(
+                (normalize_affix_tuple(m) for m in rule.modifiers)
+            ))
             identity = (
                 rule.category,
                 tuple(sorted(rule.idol_sizes)),
-                tuple(sorted(rule.modifiers))
+                normalized_modifiers
             )
         elif rule.category == 'unique':
             identity = (

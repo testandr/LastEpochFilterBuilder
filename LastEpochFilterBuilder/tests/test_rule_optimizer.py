@@ -933,7 +933,7 @@ class TestPruningBasics:
                 score=float(i),
                 build_count=1,
                 idol_size='Grand',
-                modifiers=frozenset([(None, 'Mod{i}', 0)]),
+                modifiers=frozenset([(None, f'Mod{i}', 0)]),
                 sources={'s1'}
             )
             for i in range(200)
@@ -968,7 +968,7 @@ class TestCategoryPruningPriority:
                 score=10.0,
                 build_count=1,
                 idol_size='Grand',
-                modifiers=frozenset([(None, 'Mod{i}', 0)]),
+                modifiers=frozenset([(None, f'Mod{i}', 0)]),
                 sources={'s1'}
             ))
 
@@ -990,7 +990,7 @@ class TestCategoryPruningPriority:
                 score=10.0,
                 build_count=1,
                 idol_size='Grand',
-                modifiers=frozenset([(None, 'Mod{i}', 0)]),
+                modifiers=frozenset([(None, f'Mod{i}', 0)]),
                 sources={'s1'}
             ))
         # Add 50 exalted rules (low score, different affixes to avoid merge)
@@ -1234,7 +1234,7 @@ class TestProtectedRules:
 
         # Protected should survive
         protected_found = any(
-            ('Protected', 5) in r.affixes for r in result.rules
+            (None, 'Protected', 5) in r.affixes for r in result.rules
         )
         assert protected_found
 
@@ -1325,7 +1325,7 @@ class TestPruningCounts:
                 score=10.0,
                 build_count=1,
                 idol_size='Grand',
-                modifiers=frozenset([(None, 'Mod{i}', 0)]),
+                modifiers=frozenset([(None, f'Mod{i}', 0)]),
                 sources={'s1'}
             ))
         # 50 exalted (will survive, different affixes to avoid merge)
@@ -1337,7 +1337,7 @@ class TestPruningCounts:
                 build_count=1,
                 slot='Helmet',
                 item_type=1,
-                affixes=frozenset([('A', i + 1)]),
+                affixes=frozenset([(None, f'A{i}', i + 1)]),
                 sources={'s1'}
             ))
 
@@ -1370,7 +1370,7 @@ class TestPruningCounts:
                 score=10.0,
                 build_count=1,
                 idol_size='Grand',
-                modifiers=frozenset([(None, 'Mod{i}', 0)]),
+                modifiers=frozenset([(None, f'Mod{i}', 0)]),
                 sources={'s1'}
             ))
         for i in range(60):
@@ -1381,7 +1381,7 @@ class TestPruningCounts:
                 build_count=1,
                 slot='Helmet',
                 item_type=1,
-                affixes=frozenset([(f'Affix{i}', 5)]),  # Unique affixes prevent merge
+                affixes=frozenset([(None, f'Affix{i}', 5)]),
                 sources={'s1'}
             ))
 
