@@ -337,8 +337,8 @@ class TestUniqueMerge:
         assert result.optimized_count == 1
         assert result.unique_merged == 1
 
-    def test_different_unique_ids_merged(self):
-        """Unique rules with different IDs should merge."""
+    def test_different_unique_ids_not_merged(self):
+        """Unique rules with different IDs should NOT merge (allows selective pruning)."""
         rules = [
             FilterRule(
                 category='unique',
@@ -358,11 +358,8 @@ class TestUniqueMerge:
             )
         ]
         result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
-        assert result.optimized_count == 1
-        assert result.unique_merged == 1
-        opt = result.rules[0]
-        assert len(opt.unique_names) == 2
-        assert len(opt.unique_ids) == 2
+        assert result.optimized_count == 2  # NOT merged
+        assert result.unique_merged == 0
 
     def test_unique_name_id_mapping_preserved(self):
         """Unique name/ID mappings should be preserved in lists."""
@@ -742,8 +739,8 @@ class TestCrossBaseCorrectness:
 class TestUniqueIdNamePairing:
     """Test that unique ID<->name pairing is preserved."""
 
-    def test_unique_id_name_pairing_preserved_in_merge(self):
-        """Unique ID<->name pairs should be preserved after merge."""
+    def test_unique_id_name_pairing_preserved_in_conversion(self):
+        """Unique ID<->name pairing should be preserved through conversion."""
         rules = [
             FilterRule(
                 category='unique',
@@ -763,17 +760,18 @@ class TestUniqueIdNamePairing:
             )
         ]
         result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
-        opt = result.rules[0]
 
-        # Check pairing is preserved
-        assert (100, 'ItemA') in opt.unique_items
-        assert (200, 'ItemB') in opt.unique_items
+        # Should NOT merge (different IDs), but pairing preserved
+        assert result.optimized_count == 2
 
-        # Backward compatibility properties
-        assert 100 in opt.unique_ids
-        assert 200 in opt.unique_ids
-        assert 'ItemA' in opt.unique_names
-        assert 'ItemB' in opt.unique_names
+        # Check each rule preserves pairing
+        for opt in result.rules:
+            assert len(opt.unique_items) == 1
+            uid, name = list(opt.unique_items)[0]
+            if uid == 100:
+                assert name == 'ItemA'
+            elif uid == 200:
+                assert name == 'ItemB'
 
     def test_unique_id_name_pairing_survives_sorting(self):
         """Unique ID<->name pairs should survive deterministic sorting."""
@@ -804,15 +802,20 @@ class TestUniqueIdNamePairing:
             )
         ]
         result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
-        opt = result.rules[0]
 
-        # All pairs should be preserved
-        assert (100, 'Apple') in opt.unique_items
-        assert (200, 'Banana') in opt.unique_items
-        assert (300, 'Zebra') in opt.unique_items
+        # Should NOT merge (different IDs), but sorted deterministically
+        assert result.optimized_count == 3
 
-        # Score should be max
-        assert opt.score == 60.0
+        # Check each rule preserves pairing
+        for opt in result.rules:
+            assert len(opt.unique_items) == 1
+            uid, name = list(opt.unique_items)[0]
+            if uid == 100:
+                assert name == 'Apple'
+            elif uid == 200:
+                assert name == 'Banana'
+            elif uid == 300:
+                assert name == 'Zebra'
 
 
 class TestInputImmutability:
@@ -849,3 +852,704 @@ class TestInputImmutability:
         assert rule.sources == original_sources
         assert rule.build_count == original_build_count
         assert rule.occurrence_count == original_occurrence
+
+
+class TestPruningBasics:
+    """Test basic pruning behavior."""
+
+    def test_no_pruning_when_below_budget(self):
+        """No pruning when rule count is below max_rules."""
+        rules = [
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=50.0,
+                build_count=1,
+                slot='Helmet',
+                item_type=1,
+                affixes=frozenset([('A', i % 7 + 1)]),  # Different affixes prevent merge
+                sources={'s1'}
+            )
+            for i in range(50)
+        ]
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 50
+        assert result.rules_pruned == 0
+        assert result.success is True
+        assert not result.exceeds_budget
+
+    def test_no_pruning_when_exactly_budget(self):
+        """No pruning when rule count equals max_rules."""
+        rules = [
+            FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=float(i),
+                build_count=1,
+                slot='Helmet',
+                item_type=1,
+                affixes=frozenset([('A', i % 7 + 1)]),  # Different tiers prevent merge
+                sources={'s1'}
+            )
+            for i in range(140)
+        ]
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 140
+        assert result.rules_pruned == 0
+        assert result.success is True
+
+    def test_pruning_when_above_budget(self):
+        """Pruning applied when rule count exceeds max_rules."""
+        rules = [
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=float(i),
+                build_count=1,
+                unique_name=f'Unique{i}',
+                unique_id=i,
+                sources={'s1'}
+            )
+            for i in range(150)
+        ]
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 140
+        assert result.rules_pruned == 10
+        assert result.success is True
+        assert result.exceeds_budget is True
+
+    def test_pruning_output_exactly_max_rules(self):
+        """Pruning should produce exactly max_rules when possible."""
+        rules = [
+            FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=float(i),
+                build_count=1,
+                idol_size='Grand',
+                modifiers=frozenset([f'Mod{i}']),
+                sources={'s1'}
+            )
+            for i in range(200)
+        ]
+        result = RuleOptimizer(max_rules=100).optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 100
+        assert result.rules_pruned == 100
+
+
+class TestCategoryPruningPriority:
+    """Test that category pruning priority is correct."""
+
+    def test_unique_pruned_before_idol(self):
+        """Unique rules should be pruned before Idol rules."""
+        rules = []
+        # Add 70 unique rules (low score)
+        for i in range(70):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=10.0,
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+        # Add 70 idol rules (low score)
+        for i in range(70):
+            rules.append(FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=10.0,
+                build_count=1,
+                idol_size='Grand',
+                modifiers=frozenset([f'Mod{i}']),
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=70).optimize(RuleBuildResult(rules=rules))
+
+        # All 70 unique should be pruned, 0 idol
+        assert result.pruned_unique == 70
+        assert result.pruned_idol == 0
+        assert result.final_count == 70
+
+    def test_idol_pruned_before_exalted(self):
+        """Idol rules should be pruned before Exalted rules."""
+        rules = []
+        # Add 50 idol rules (low score, different modifiers to avoid merge)
+        for i in range(50):
+            rules.append(FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=10.0,
+                build_count=1,
+                idol_size='Grand',
+                modifiers=frozenset([f'Mod{i}']),
+                sources={'s1'}
+            ))
+        # Add 50 exalted rules (low score, different affixes to avoid merge)
+        for i in range(50):
+            rules.append(FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=10.0,
+                build_count=1,
+                slot='Helmet',
+                item_type=1,
+                affixes=frozenset([('A', i % 7 + 1)]),
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=50).optimize(RuleBuildResult(rules=rules))
+
+        # All 50 idol should be pruned, 0 exalted
+        assert result.pruned_idol == 50
+        assert result.pruned_exalted == 0
+        assert result.final_count == 50
+
+
+class TestWithinCategoryPruningOrder:
+    """Test that within-category pruning order is correct."""
+
+    def test_lower_score_pruned_first(self):
+        """Within category, lower score should be pruned first."""
+        rules = []
+        # High score unique
+        for i in range(70):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=100.0,
+                build_count=1,
+                unique_name=f'High{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+        # Low score unique
+        for i in range(70, 140):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=10.0,
+                build_count=1,
+                unique_name=f'Low{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=70).optimize(RuleBuildResult(rules=rules))
+
+        # All remaining should have high score
+        for rule in result.rules:
+            assert rule.score == 100.0
+
+    def test_build_count_tie_break(self):
+        """When score is same, lower build_count should be pruned first."""
+        rules = []
+        # High build_count
+        for i in range(70):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=10,
+                unique_name=f'HighBC{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+        # Low build_count
+        for i in range(70, 140):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=1,
+                unique_name=f'LowBC{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=70).optimize(RuleBuildResult(rules=rules))
+
+        # All remaining should have high build_count
+        for rule in result.rules:
+            assert rule.build_count == 10
+
+    def test_source_count_tie_break(self):
+        """When score and build_count same, lower source_count pruned first."""
+        rules = []
+        # High source_count
+        for i in range(70):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=5,
+                source_count=3,
+                unique_name=f'HighSC{i}',
+                unique_id=i,
+                sources={'s1', 's2', 's3'}
+            ))
+        # Low source_count
+        for i in range(70, 140):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=5,
+                source_count=1,
+                unique_name=f'LowSC{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=70).optimize(RuleBuildResult(rules=rules))
+
+        # All remaining should have high source_count
+        for rule in result.rules:
+            assert rule.source_count == 3
+
+    def test_stable_identity_tie_break(self):
+        """When all stats same, stable identity provides deterministic order."""
+        rules = []
+        names = [f'Z{i:03d}' for i in range(70)] + [f'A{i:03d}' for i in range(70)]
+        for i, name in enumerate(names):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=5,
+                source_count=1,
+                unique_name=name,
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=70).optimize(RuleBuildResult(rules=rules))
+
+        # Should keep A* names (earlier in alphabet, earlier in stable sort)
+        for rule in result.rules:
+            assert rule.unique_names[0].startswith('A')
+
+
+class TestProtectedRules:
+    """Test protected rule behavior."""
+
+    def test_multi_source_rule_survives(self):
+        """Rules with source_count >= 2 should be protected."""
+        rules = []
+        # Protected multi-source
+        rules.append(FilterRule(
+            category='unique',
+            semantic_priority=40,
+            score=10.0,
+            build_count=1,
+            source_count=2,
+            unique_name='Protected',
+            unique_id=999,
+            sources={'s1', 's2'}
+        ))
+        # Unprotected single-source high score
+        for i in range(140):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=100.0,
+                build_count=1,
+                source_count=1,
+                unique_name=f'Unprotected{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        # Protected should survive despite low score
+        assert any(r.unique_names[0] == 'Protected' for r in result.rules)
+
+    def test_high_build_count_survives(self):
+        """Rules with build_count >= 5 should be protected."""
+        rules = []
+        # Protected high build_count
+        rules.append(FilterRule(
+            category='unique',
+            semantic_priority=40,
+            score=10.0,
+            build_count=5,
+            unique_name='Protected',
+            unique_id=999,
+            sources={'s1'}
+        ))
+        # Unprotected high score
+        for i in range(140):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=100.0,
+                build_count=1,
+                unique_name=f'Unprotected{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        # Protected should survive
+        assert any(r.unique_names[0] == 'Protected' for r in result.rules)
+
+    def test_exalted_build_count_3_survives(self):
+        """Exalted rules with build_count >= 3 should be protected."""
+        rules = []
+        # Protected exalted
+        rules.append(FilterRule(
+            category='exalted',
+            semantic_priority=100,
+            score=10.0,
+            build_count=3,
+            slot='Helmet',
+            item_type=999,
+            affixes=frozenset([('Protected', 5)]),
+            sources={'s1'}
+        ))
+        # Unprotected high score
+        for i in range(140):
+            rules.append(FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=100.0,
+                build_count=1,
+                slot='Helmet',
+                item_type=i,
+                affixes=frozenset([('Unprotected', 5)]),
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        # Protected should survive
+        protected_found = any(
+            ('Protected', 5) in r.affixes for r in result.rules
+        )
+        assert protected_found
+
+
+class TestImpossibleBudget:
+    """Test behavior when budget is impossible."""
+
+    def test_impossible_budget_returns_failure(self):
+        """If protected rules exceed max_rules, should return success=False."""
+        rules = []
+        # Create 150 protected rules (all multi-source)
+        for i in range(150):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=1,
+                source_count=2,
+                unique_name=f'Protected{i}',
+                unique_id=i,
+                sources={'s1', 's2'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        assert result.success is False
+        assert result.protected_count == 150
+        assert result.final_count == 150  # Unchanged
+        assert 'protected rules exceed budget' in result.message.lower()
+
+    def test_protected_not_silently_deleted(self):
+        """Protected rules should never be silently deleted."""
+        rules = []
+        # 100 protected
+        for i in range(100):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=5,
+                unique_name=f'Protected{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+        # 50 unprotected
+        for i in range(100, 150):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=50.0,
+                build_count=1,
+                unique_name=f'Unprotected{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        # All protected should survive
+        assert result.protected_count == 100
+        assert result.final_count == 140
+        # Only unprotected pruned
+        assert result.rules_pruned == 10
+
+
+class TestPruningCounts:
+    """Test pruning count accuracy."""
+
+    def test_pruning_counts_correct(self):
+        """Pruning counts by category should be accurate."""
+        rules = []
+        # 50 unique (will be pruned first)
+        for i in range(50):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=10.0,
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+        # 50 idol (will be pruned second)
+        for i in range(50):
+            rules.append(FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=10.0,
+                build_count=1,
+                idol_size='Grand',
+                modifiers=frozenset([f'Mod{i}']),
+                sources={'s1'}
+            ))
+        # 50 exalted (will survive, different affixes to avoid merge)
+        for i in range(50):
+            rules.append(FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=10.0,
+                build_count=1,
+                slot='Helmet',
+                item_type=1,
+                affixes=frozenset([('A', i % 7 + 1)]),
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=60).optimize(RuleBuildResult(rules=rules))
+
+        # Should prune all 50 unique + 40 idol
+        assert result.pruned_unique == 50
+        assert result.pruned_idol == 40
+        assert result.pruned_exalted == 0
+        assert result.rules_pruned == 90
+        assert result.final_count == 60
+
+    def test_category_prune_counts_separate(self):
+        """Pruning counts should be tracked separately by category."""
+        rules = []
+        for i in range(60):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=10.0,
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+        for i in range(60):
+            rules.append(FilterRule(
+                category='idol',
+                semantic_priority=70,
+                score=10.0,
+                build_count=1,
+                idol_size='Grand',
+                modifiers=frozenset([f'Mod{i}']),
+                sources={'s1'}
+            ))
+        for i in range(60):
+            rules.append(FilterRule(
+                category='exalted',
+                semantic_priority=100,
+                score=10.0,
+                build_count=1,
+                slot='Helmet',
+                item_type=1,
+                affixes=frozenset([(f'Affix{i}', 5)]),  # Unique affixes prevent merge
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        # 180 total, need to remove 40
+        # All unique + all idol = 120, so prune 40 unique
+        assert result.pruned_unique == 40
+        assert result.pruned_idol == 0
+        assert result.pruned_exalted == 0
+
+
+class TestDeterministicPruning:
+    """Test deterministic pruning behavior."""
+
+    def test_deterministic_pruning_result(self):
+        """Same input should produce same pruning result."""
+        rules = []
+        for i in range(150):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=float(i % 10),
+                build_count=i % 5 + 1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result1 = RuleOptimizer(max_rules=100).optimize(RuleBuildResult(rules=rules))
+        result2 = RuleOptimizer(max_rules=100).optimize(RuleBuildResult(rules=rules))
+
+        # Should produce identical results
+        assert result1.final_count == result2.final_count
+        assert result1.rules_pruned == result2.rules_pruned
+        names1 = [r.unique_names[0] for r in result1.rules]
+        names2 = [r.unique_names[0] for r in result2.rules]
+        assert names1 == names2
+
+
+class TestPruningInputImmutability:
+    """Test that pruning does not mutate input."""
+
+    def test_input_not_mutated_by_pruning(self):
+        """Input should not be modified during pruning."""
+        original_sources = {'original'}
+        rules = []
+        for i in range(150):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=float(i),
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources=original_sources.copy()
+            ))
+        input_result = RuleBuildResult(rules=rules)
+        original_count = len(input_result.rules)
+
+        result = RuleOptimizer(max_rules=100).optimize(input_result)
+
+        # Input should be unchanged
+        assert len(input_result.rules) == original_count
+        assert all(r.sources == original_sources for r in input_result.rules)
+
+
+class TestMergedRulePruning:
+    """Test that merged rules are pruned atomically."""
+
+    def test_merged_rule_pruned_atomically(self):
+        """Merged rule should be pruned as a whole, not split."""
+        rules = []
+        # Create mergeable rules
+        rules.append(FilterRule(
+            category='unique',
+            semantic_priority=40,
+            score=50.0,
+            build_count=1,
+            unique_name='Apple',
+            unique_id=1,
+            sources={'s1'}
+        ))
+        rules.append(FilterRule(
+            category='unique',
+            semantic_priority=40,
+            score=50.0,
+            build_count=1,
+            unique_name='Banana',
+            unique_id=2,
+            sources={'s1'}
+        ))
+        # Add many high-score rules to force pruning
+        for i in range(100, 250):
+            rules.append(FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=100.0,
+                build_count=1,
+                unique_name=f'High{i}',
+                unique_id=i,
+                sources={'s1'}
+            ))
+
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+
+        # Check if merged rule was pruned
+        merged_present = any(
+            len(r.unique_items) > 1 for r in result.rules
+        )
+
+        if merged_present:
+            # If merged rule survived, both items should be present
+            merged_rule = [r for r in result.rules if len(r.unique_items) > 1][0]
+            assert (1, 'Apple') in merged_rule.unique_items
+            assert (2, 'Banana') in merged_rule.unique_items
+        else:
+            # If merged rule was pruned, neither should be present
+            all_names = [name for r in result.rules for name in r.unique_names]
+            assert 'Apple' not in all_names
+            assert 'Banana' not in all_names
+
+
+class TestConfigurableMaxRules:
+    """Test that max_rules is configurable."""
+
+    def test_max_rules_140_works(self):
+        """Default max_rules=140 should work."""
+        rules = [
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=float(i),
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            )
+            for i in range(200)
+        ]
+        result = RuleOptimizer(max_rules=140).optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 140
+
+    def test_custom_max_rules_works(self):
+        """Custom max_rules values should work."""
+        rules = [
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=float(i),
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            )
+            for i in range(200)
+        ]
+        result = RuleOptimizer(max_rules=50).optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 50
+
+    def test_max_rules_parameter_respected(self):
+        """Optimizer should respect max_rules parameter."""
+        rules = [
+            FilterRule(
+                category='unique',
+                semantic_priority=40,
+                score=float(i),
+                build_count=1,
+                unique_name=f'U{i}',
+                unique_id=i,
+                sources={'s1'}
+            )
+            for i in range(100)
+        ]
+        optimizer = RuleOptimizer(max_rules=75)
+        result = optimizer.optimize(RuleBuildResult(rules=rules))
+        assert result.final_count == 75

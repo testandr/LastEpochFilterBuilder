@@ -81,11 +81,24 @@ class OptimizationResult:
     exalted_merged: int = 0
     idol_merged: int = 0
     unique_merged: int = 0
+    final_count: int = 0
+    rules_pruned: int = 0
+    pruned_exalted: int = 0
+    pruned_idol: int = 0
+    pruned_unique: int = 0
+    protected_count: int = 0
+    success: bool = True
+    exceeds_budget: bool = False
+    message: str = ''
 
     @property
     def total_merged(self) -> int:
         return self.exalted_merged + self.idol_merged + self.unique_merged
 
     @property
+    def rules_saved_by_merge(self) -> int:
+        return self.total_merged
+
+    @property
     def exceeds_limit(self) -> bool:
-        return self.optimized_count > 140
+        return self.final_count > 140

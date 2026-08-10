@@ -279,7 +279,63 @@ UNSAFE 5 Cross-category merges
 
 ## Implementation Notes
 
-DO NOT implement RuleOptimizer yet. Research document only.
-Next step XML semantics verification.
-Production file app/generator/rule_optimizer.py
-Tests file tests/test_rule_optimizer.py
+RuleOptimizer Part 3A: Lossless merge (COMPLETE)
+RuleOptimizer Part 3B: Pruning to max_rules budget (COMPLETE)
+
+Production file: app/generator/rule_optimizer.py
+Tests file: tests/test_rule_optimizer.py
+
+Implemented Part 3B — Pruning
+
+**When Pruning Starts**
+Pruning is applied ONLY when optimized_count > max_rules after lossless merge.
+If optimized_count <= max_rules, NO pruning occurs and all rules pass through.
+
+**Category Priority**
+1. EXALTED — highest priority, removed LAST
+2. IDOL — medium priority
+3. UNIQUE — lowest priority, removed FIRST
+
+**Within-Category Ordering**
+Rules within same category are pruned in deterministic order:
+1. Lower score pruned first
+2. Lower build_count tie-break
+3. Lower source_count tie-break
+4. Lower occurrence_count tie-break
+5. Stable identity (deterministic field-based sort, NOT hash())
+
+**Protection Policy**
+A rule is PROTECTED if ANY of:
+- source_count >= 2 (multi-source rules)
+- build_count >= 5
+- category == exalted AND build_count >= 3
+
+Protected rules CANNOT be removed by normal pruning.
+
+**Impossible-Budget Behavior**
+If protected_count > max_rules:
+- Returns success=False
+- Final rules list unchanged (includes all protected rules)
+- Message explains the conflict
+- Protected rules are NEVER silently deleted
+
+**Deterministic Tie-Breaking**
+Stable identity is computed from actual rule fields:
+- Exalted: (category, slot, item_types, affixes)
+- Idol: (category, idol_sizes, modifiers)
+- Unique: (category, unique_items)
+
+NO Python hash() is used (non-deterministic across runs).
+
+**Project Budget: 140**
+Last Epoch game maximum = 200 rules
+Approximately 60 rules reserved for user-defined rules
+Project budget for auto-generated rules = 140
+
+**Known Limitations from Conservative Statistics**
+- build_count uses max(component builds), not sum (avoids double-counting)
+- occurrence_count uses max(), not sum (conservative)
+- score uses max(), not recalculated from Analyzer formula
+- Merged rules are pruned atomically (cannot split after merge)
+
+These limitations are acceptable for Part 3B and documented for future improvement.

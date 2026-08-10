@@ -1,8 +1,8 @@
-"""RuleOptimizer performs lossless merging of FilterRules.
+"""RuleOptimizer performs lossless merging and lossy pruning of FilterRules.
 
-RuleOptimizer Part 3A: Lossless merge only
-- Does NOT perform pruning
-- Does NOT enforce 140 rule limit
+RuleOptimizer Part 3A: Lossless merge only (COMPLETE)
+RuleOptimizer Part 3B: Pruning to max_rules budget (CURRENT)
+
 - Does NOT generate XML
 - Does NOT mutate input
 
@@ -14,6 +14,12 @@ Merge policy:
 - Idol: merge same modifiers + different sizes
 - Does NOT merge partial affix overlap
 - Does NOT perform tier relaxation
+
+Pruning policy (only if optimized_count > max_rules):
+- Category priority: UNIQUE removed first, then IDOL, then EXALTED
+- Within-category: lower score first, then build_count, source_count, stable identity
+- Protected rules: source_count >= 2 OR build_count >= 5 OR (category==exalted AND build_count >= 3)
+- If protected rules exceed budget: return success=False with message
 
 Score policy:
 - Use max(component scores) - exact recalculation not possible without Analyzer formula
@@ -39,7 +45,15 @@ logger = logging.getLogger(__name__)
 
 
 class RuleOptimizer:
-    """Lossless rule optimizer for reducing rule count through safe merging."""
+    """Lossless rule optimizer with lossy pruning for reducing rule count."""
+
+    def __init__(self, max_rules: int = 140):
+        """Initialize RuleOptimizer with max_rules budget.
+
+        Args:
+            max_rules: Maximum number of rules allowed (default 140)
+        """
+        self.max_rules = max_rules
 
     def optimize(self, input_result: RuleBuildResult) -> OptimizationResult:
         """Optimize rules through lossless merging.
@@ -68,18 +82,54 @@ class RuleOptimizer:
         all_merged = merged_exalted + merged_idol + merged_unique
         all_merged.sort(key=self._stable_sort_key)
 
+        # Step 4: Pruning (only if needed)
+        final_rules = all_merged
+        pruned_exalted = 0
+        pruned_idol = 0
+        pruned_unique = 0
+        protected_count = 0
+        success = True
+        exceeds_budget = False
+        message = ''
+
+        if len(all_merged) > self.max_rules:
+            exceeds_budget = True
+            prune_result = self._prune_to_budget(all_merged, self.max_rules)
+            final_rules = prune_result['rules']
+            pruned_exalted = prune_result['pruned_exalted']
+            pruned_idol = prune_result['pruned_idol']
+            pruned_unique = prune_result['pruned_unique']
+            protected_count = prune_result['protected_count']
+            success = prune_result['success']
+            message = prune_result['message']
+            logger.info(
+                f"Pruning applied: {len(all_merged)} -> {len(final_rules)} rules "
+                f"(pruned: {pruned_exalted} exalted, {pruned_idol} idol, {pruned_unique} unique)"
+            )
+        else:
+            protected_count = self._count_protected(all_merged)
+
         result = OptimizationResult(
-            rules=all_merged,
+            rules=final_rules,
             original_count=input_result.total_count,
             optimized_count=len(all_merged),
+            final_count=len(final_rules),
             exalted_merged=exalted_merge_count,
             idol_merged=idol_merge_count,
-            unique_merged=unique_merge_count
+            unique_merged=unique_merge_count,
+            rules_pruned=pruned_exalted + pruned_idol + pruned_unique,
+            pruned_exalted=pruned_exalted,
+            pruned_idol=pruned_idol,
+            pruned_unique=pruned_unique,
+            protected_count=protected_count,
+            success=success,
+            exceeds_budget=exceeds_budget,
+            message=message
         )
 
         logger.info(
-            f"Optimization complete: {result.original_count} -> {result.optimized_count} rules "
-            f"({result.total_merged} merged)"
+            f"Optimization complete: {result.original_count} -> {result.final_count} rules "
+            f"({result.total_merged} merged, {result.rules_pruned} pruned)"
         )
 
         return result
@@ -101,14 +151,18 @@ class RuleOptimizer:
         if rule.unique_id is not None or rule.unique_name:
             unique_items = frozenset([(rule.unique_id, rule.unique_name or '')])
 
+        # Always compute source_count from actual sources (don't trust FilterRule.source_count)
+        sources_copy = rule.sources.copy()
+        actual_source_count = len(sources_copy)
+
         return OptimizedRule(
             category=rule.category,
             semantic_priority=rule.semantic_priority,
             score=rule.score,
             build_count=rule.build_count,
             occurrence_count=rule.occurrence_count,
-            source_count=rule.source_count,
-            sources=rule.sources.copy(),
+            source_count=actual_source_count,
+            sources=sources_copy,
             slot=rule.slot,
             item_types=item_types,
             affixes=rule.affixes,
@@ -357,8 +411,8 @@ class RuleOptimizer:
         """Merge Unique rules.
 
         Merge policy:
-        - Different unique IDs can be merged
-        - Unique name/ID mappings preserved in lists
+        - ONLY exact duplicates (same unique_id AND same name) can be merged
+        - Different unique IDs are NOT merged (would prevent selective pruning)
 
         Args:
             rules: List of Unique OptimizedRules
@@ -369,13 +423,25 @@ class RuleOptimizer:
         if not rules:
             return [], 0
 
-        # For Part 3A: merge ALL unique rules into one (simple case)
-        # More sophisticated grouping (by slot, etc.) can be added later
-        if len(rules) == 1:
-            return rules, 0
+        # Group by unique_items (exact match for merge)
+        unique_groups: Dict[FrozenSet, List[OptimizedRule]] = {}
+        for rule in rules:
+            unique_groups.setdefault(rule.unique_items, []).append(rule)
 
-        merged = self._merge_unique_group(rules)
-        return [merged], len(rules) - 1
+        merged_rules = []
+        merge_count = 0
+
+        for unique_items, group in unique_groups.items():
+            if len(group) == 1:
+                # No merge needed
+                merged_rules.append(group[0])
+            else:
+                # Merge exact duplicates
+                merged = self._merge_unique_group(group)
+                merged_rules.append(merged)
+                merge_count += len(group) - 1
+
+        return merged_rules, merge_count
 
     def _merge_unique_group(self, group: List[OptimizedRule]) -> OptimizedRule:
         """Merge a group of Unique rules.
@@ -479,3 +545,178 @@ class RuleOptimizer:
             -rule.score,
             identity
         )
+
+    def _is_protected(self, rule: OptimizedRule) -> bool:
+        """Check if rule is protected from pruning.
+
+        Protected criteria (ANY of):
+        - source_count >= 2 (multi-source)
+        - build_count >= 5
+        - category == exalted AND build_count >= 3
+
+        Args:
+            rule: OptimizedRule to check
+
+        Returns:
+            True if rule is protected
+        """
+        if rule.source_count >= 2:
+            return True
+        if rule.build_count >= 5:
+            return True
+        if rule.category == 'exalted' and rule.build_count >= 3:
+            return True
+        return False
+
+    def _count_protected(self, rules: List[OptimizedRule]) -> int:
+        """Count protected rules.
+
+        Args:
+            rules: List of OptimizedRules
+
+        Returns:
+            Count of protected rules
+        """
+        return sum(1 for rule in rules if self._is_protected(rule))
+
+    def _pruning_sort_key(self, rule: OptimizedRule) -> tuple:
+        """Generate sort key for pruning order.
+
+        Pruning order (lowest priority removed first):
+        1. Category priority ASC (unique < idol < exalted)
+        2. Score ASC (lower removed first)
+        3. Build_count ASC
+        4. Source_count ASC
+        5. Occurrence_count ASC
+        6. Stable identity ASC
+
+        Args:
+            rule: OptimizedRule to generate key for
+
+        Returns:
+            Tuple for sorting (lowest priority first)
+        """
+        # Category priority mapping for pruning (lower = removed first)
+        category_priority = {
+            'unique': 1,
+            'idol': 2,
+            'exalted': 3
+        }
+
+        # Build stable identity
+        if rule.category == 'exalted':
+            identity = (
+                rule.category,
+                rule.slot or '',
+                tuple(sorted(rule.item_types)),
+                tuple(sorted(rule.affixes))
+            )
+        elif rule.category == 'idol':
+            identity = (
+                rule.category,
+                tuple(sorted(rule.idol_sizes)),
+                tuple(sorted(rule.modifiers))
+            )
+        elif rule.category == 'unique':
+            identity = (
+                rule.category,
+                tuple(sorted(rule.unique_items))
+            )
+        else:
+            identity = (rule.category,)
+
+        return (
+            category_priority.get(rule.category, 0),
+            rule.score,
+            rule.build_count,
+            rule.source_count,
+            rule.occurrence_count,
+            identity
+        )
+
+    def _prune_to_budget(self, rules: List[OptimizedRule], max_rules: int) -> dict:
+        """Prune rules to fit max_rules budget.
+
+        Strategy:
+        1. Identify protected rules
+        2. If protected count > max_rules: FAIL
+        3. Sort prunable rules by priority (unique first, then idol, then exalted)
+        4. Remove lowest-priority rules until count <= max_rules
+
+        Args:
+            rules: List of merged OptimizedRules
+            max_rules: Maximum allowed rules
+
+        Returns:
+            Dict with keys: rules, pruned_exalted, pruned_idol, pruned_unique,
+                           protected_count, success, message
+        """
+        # Separate protected and prunable
+        protected = [r for r in rules if self._is_protected(r)]
+        prunable = [r for r in rules if not self._is_protected(r)]
+
+        protected_count = len(protected)
+
+        # Check if impossible
+        if protected_count > max_rules:
+            # Cannot fit even protected rules
+            return {
+                'rules': rules,  # Return original
+                'pruned_exalted': 0,
+                'pruned_idol': 0,
+                'pruned_unique': 0,
+                'protected_count': protected_count,
+                'success': False,
+                'message': (
+                    f"Cannot achieve max_rules={max_rules}: "
+                    f"{protected_count} protected rules exceed budget. "
+                    f"Protected rules cannot be removed automatically."
+                )
+            }
+
+        # Calculate how many to remove
+        available_slots = max_rules - protected_count
+        to_remove = len(prunable) - available_slots
+
+        if to_remove <= 0:
+            # All rules fit
+            return {
+                'rules': rules,
+                'pruned_exalted': 0,
+                'pruned_idol': 0,
+                'pruned_unique': 0,
+                'protected_count': protected_count,
+                'success': True,
+                'message': ''
+            }
+
+        # Sort prunable by pruning priority (lowest first)
+        prunable.sort(key=self._pruning_sort_key)
+
+        # Remove lowest-priority rules
+        removed = prunable[:to_remove]
+        kept_prunable = prunable[to_remove:]
+
+        # Count by category
+        pruned_exalted = sum(1 for r in removed if r.category == 'exalted')
+        pruned_idol = sum(1 for r in removed if r.category == 'idol')
+        pruned_unique = sum(1 for r in removed if r.category == 'unique')
+
+        # Combine protected + kept prunable
+        final_rules = protected + kept_prunable
+
+        # Re-sort final rules by display order (semantic_priority DESC, score DESC)
+        final_rules.sort(key=self._stable_sort_key)
+
+        return {
+            'rules': final_rules,
+            'pruned_exalted': pruned_exalted,
+            'pruned_idol': pruned_idol,
+            'pruned_unique': pruned_unique,
+            'protected_count': protected_count,
+            'success': True,
+            'message': (
+                f"Pruned {to_remove} rules to fit max_rules={max_rules}. "
+                f"Protected: {protected_count}, Final: {len(final_rules)}"
+            )
+        }
