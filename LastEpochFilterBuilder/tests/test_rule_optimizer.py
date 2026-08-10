@@ -382,11 +382,14 @@ class TestUniqueMerge:
             )
         ]
         result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
-        opt = result.rules[0]
-        assert 'A' in opt.unique_names
-        assert 'B' in opt.unique_names
-        assert 1 in opt.unique_ids
-        assert 2 in opt.unique_ids
+        # Different unique_ids do NOT merge under Part 3B policy
+        assert len(result.rules) == 2
+        names = {name for rule in result.rules for name in rule.unique_names}
+        ids = {id for rule in result.rules for id in rule.unique_ids}
+        assert 'A' in names
+        assert 'B' in names
+        assert 1 in ids
+        assert 2 in ids
 
 
 class TestNoTierRelaxation:
@@ -505,9 +508,12 @@ class TestNoPruning:
 
         result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
 
-        # All 150 unique rules should remain (no merge, no pruning)
+        # All 150 unique rules created (no merge)
         assert result.optimized_count == 150
-        assert result.exceeds_limit  # Should still flag the issue
+        # Part 3B prunes 10 to fit default max_rules=140
+        assert result.final_count == 140
+        assert result.rules_pruned == 10
+        assert result.exceeds_budget
         assert result.total_merged == 0
 
 
@@ -577,10 +583,10 @@ class TestMixedCategories:
         result = RuleOptimizer().optimize(RuleBuildResult(rules=rules))
 
         assert result.original_count == 6
-        assert result.optimized_count == 3  # Each category merged to 1
+        assert result.optimized_count == 4  # Exalted 1, Idol 1, Unique 2 (different IDs)
         assert result.exalted_merged == 1
         assert result.idol_merged == 1
-        assert result.unique_merged == 1
+        assert result.unique_merged == 0  # Different unique IDs do not merge
 
 
 class TestConservativeStatistics:
@@ -867,7 +873,7 @@ class TestPruningBasics:
                 build_count=1,
                 slot='Helmet',
                 item_type=1,
-                affixes=frozenset([('A', i % 7 + 1)]),  # Different affixes prevent merge
+                affixes=frozenset([('A', i + 1)]),  # Unique affix per rule
                 sources={'s1'}
             )
             for i in range(50)
@@ -888,7 +894,7 @@ class TestPruningBasics:
                 build_count=1,
                 slot='Helmet',
                 item_type=1,
-                affixes=frozenset([('A', i % 7 + 1)]),  # Different tiers prevent merge
+                affixes=frozenset([('A', i + 1)]),  # Unique tier per rule
                 sources={'s1'}
             )
             for i in range(140)
@@ -996,7 +1002,7 @@ class TestCategoryPruningPriority:
                 build_count=1,
                 slot='Helmet',
                 item_type=1,
-                affixes=frozenset([('A', i % 7 + 1)]),
+                affixes=frozenset([('A', i + 1)]),
                 sources={'s1'}
             ))
 
@@ -1084,7 +1090,7 @@ class TestWithinCategoryPruningOrder:
                 category='unique',
                 semantic_priority=40,
                 score=50.0,
-                build_count=5,
+                build_count=1,
                 source_count=3,
                 unique_name=f'HighSC{i}',
                 unique_id=i,
@@ -1096,7 +1102,7 @@ class TestWithinCategoryPruningOrder:
                 category='unique',
                 semantic_priority=40,
                 score=50.0,
-                build_count=5,
+                build_count=1,
                 source_count=1,
                 unique_name=f'LowSC{i}',
                 unique_id=i,
@@ -1118,7 +1124,7 @@ class TestWithinCategoryPruningOrder:
                 category='unique',
                 semantic_priority=40,
                 score=50.0,
-                build_count=5,
+                build_count=1,
                 source_count=1,
                 unique_name=name,
                 unique_id=i,
@@ -1331,7 +1337,7 @@ class TestPruningCounts:
                 build_count=1,
                 slot='Helmet',
                 item_type=1,
-                affixes=frozenset([('A', i % 7 + 1)]),
+                affixes=frozenset([('A', i + 1)]),
                 sources={'s1'}
             ))
 
